@@ -1,0 +1,21 @@
+services:
+  greeter:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5910:5910"
+    volumes:
+      - ./testdata:/app/testdata:ro
+    environment:
+      - WLR_BACKENDS=headless
+      - WLR_RENDERER=pixman
+      - WLR_LIBINPUT_NO_DEVICES=1
+      - XDG_RUNTIME_DIR=/run/user/1000
+      - GREETDEEZ_SESSION_DIRS=wayland=/app/testdata/sessions/wayland:x11=/app/testdata/sessions/x11
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_ADMIN
+    tmpfs:
+      - /run/user/1000:size=64m

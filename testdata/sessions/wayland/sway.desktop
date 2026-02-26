@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Sway
+Comment=An i3-compatible Wayland compositor
+Exec=sway
+DesktopNames=sway

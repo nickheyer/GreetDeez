@@ -1,0 +1,45 @@
+name: greetdeez
+arch: amd64
+platform: linux
+version: v${VERSION:-0.1.0}
+maintainer: Nick Heyer <nick@nickheyer.com>
+description: Minimal, hackable display manager greeter for greetd. Go + Svelte 5, native webview via webkit2gtk.
+vendor: nickheyer
+homepage: https://github.com/nickheyer/greetdeez
+license: MIT
+
+contents:
+  - src: bin/greetdeez
+    dst: /usr/bin/greetdeez
+    file_info:
+      mode: 0755
+  - src: greetdeez.toml
+    dst: /etc/greetd/greetdeez.toml
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: scripts/post-install.sh
+
+overrides:
+  deb:
+    depends:
+      - greetd
+      - libwebkit2gtk-4.1-0
+      - cage
+  rpm:
+    depends:
+      - greetd
+      - webkit2gtk4.1
+      - cage
+  archlinux:
+    depends:
+      - greetd
+      - webkit2gtk
+      - webkit2gtk-4.1
+      - cage
+  apk:
+    depends:
+      - greetd
+      - webkit2gtk-4.1
+      - cage

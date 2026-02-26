@@ -1,0 +1,68 @@
+version: 2
+
+before:
+  hooks:
+    - cmd: bash -c "cd ui/greetdeez && npm ci && npm run build"
+
+builds:
+  - id: greetdeez
+    main: ./cmd/greetdeez
+    binary: greetdeez
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+nfpms:
+  - id: greetdeez
+    package_name: greetdeez
+    vendor: nickheyer
+    homepage: https://github.com/nickheyer/greetdeez
+    maintainer: Nick Heyer <nick@nickheyer.com>
+    description: Minimal, hackable display manager greeter for greetd
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - archlinux
+      - apk
+    contents:
+      - src: greetdeez.toml
+        dst: /etc/greetd/greetdeez.toml
+    scripts:
+      postinstall: scripts/post-install.sh
+    overrides:
+      deb:
+        dependencies:
+          - greetd
+          - libwebkit2gtk-4.1-0
+          - cage
+      rpm:
+        dependencies:
+          - greetd
+          - webkit2gtk4.1
+          - cage
+      archlinux:
+        dependencies:
+          - greetd
+          - webkit2gtk
+          - webkit2gtk-4.1
+          - cage
+      apk:
+        dependencies:
+          - greetd
+          - webkit2gtk-4.1
+          - cage
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  github:
+    owner: nickheyer
+    name: greetdeez

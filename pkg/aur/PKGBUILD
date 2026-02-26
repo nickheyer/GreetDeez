@@ -1,0 +1,45 @@
+# Maintainer: Nick Heyer <nick@nickheyer.com>
+pkgname=greetdeez-git
+pkgver=r0.0.0
+pkgrel=1
+pkgdesc='Minimal, hackable display manager greeter for greetd — Go + Svelte 5 + webkit2gtk'
+arch=('x86_64' 'aarch64')
+url='https://github.com/nickheyer/greetdeez'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'cage')
+makedepends=('go' 'npm' 'git')
+provides=('greetdeez')
+conflicts=('greetdeez')
+source=("git+${url}.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd greetdeez
+    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+    cd greetdeez
+
+    # Build Svelte UI
+    cd ui/greetdeez
+    npm ci
+    npm run build
+    cd ../..
+
+    # Build Go binary
+    export CGO_ENABLED=1
+    export CGO_CFLAGS="${CFLAGS}"
+    export CGO_CPPFLAGS="${CPPFLAGS}"
+    export CGO_CXXFLAGS="${CXXFLAGS}"
+    export CGO_LDFLAGS="${LDFLAGS}"
+    export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
+
+    go build -o greetdeez ./cmd/greetdeez
+}
+
+package() {
+    cd greetdeez
+    install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
+    install -Dm644 greetdeez.toml "${pkgdir}/etc/greetd/greetdeez.toml"
+}

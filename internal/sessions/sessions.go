@@ -1,0 +1,120 @@
+package sessions
+
+import (
+	"bufio"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/nickheyer/greetdeez/internal/config"
+)
+
+type Session struct {
+	Name    string   `json:"name"`
+	Cmd     []string `json:"cmd"`
+	Type    string   `json:"type"`
+	Desktop string   `json:"desktop"`
+}
+
+// List discovers available desktop sessions by parsing .desktop entry files
+// from the configured session directories.
+func List(dirs []config.SessionDir) []Session {
+	var out []Session
+
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir.Path)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			if !strings.HasSuffix(entry.Name(), ".desktop") {
+				continue
+			}
+
+			s, err := parseDesktopEntry(filepath.Join(dir.Path, entry.Name()), dir.Type)
+			if err != nil {
+				continue
+			}
+			out = append(out, *s)
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Type != out[j].Type {
+			return out[i].Type == "wayland"
+		}
+		return out[i].Name < out[j].Name
+	})
+
+	return out
+}
+
+func parseDesktopEntry(path, sessType string) (*Session, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var name, execStr, desktopNames, tryExec string
+	var hidden, noDisplay bool
+	inDesktopEntry := false
+	scanner := bufio.NewScanner(f)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Only parse keys within the [Desktop Entry] section.
+		if strings.HasPrefix(line, "[") {
+			inDesktopEntry = line == "[Desktop Entry]"
+			continue
+		}
+		if !inDesktopEntry {
+			continue
+		}
+
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+
+		switch key {
+		case "Name":
+			name = val
+		case "Exec":
+			execStr = val
+		case "DesktopNames":
+			desktopNames = val
+		case "TryExec":
+			tryExec = val
+		case "Hidden":
+			hidden = val == "true"
+		case "NoDisplay":
+			noDisplay = val == "true"
+		}
+	}
+
+	if name == "" || execStr == "" {
+		return nil, os.ErrNotExist
+	}
+
+	if hidden || noDisplay {
+		return nil, os.ErrNotExist
+	}
+
+	if tryExec != "" {
+		if _, err := exec.LookPath(tryExec); err != nil {
+			return nil, err
+		}
+	}
+
+	return &Session{
+		Name:    name,
+		Cmd:     strings.Fields(execStr),
+		Type:    sessType,
+		Desktop: desktopNames,
+	}, nil
+}
