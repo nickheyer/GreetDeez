@@ -10,6 +10,12 @@ export interface Result {
 	error?: string;
 }
 
+export interface LoginResult {
+	ok: boolean;
+	error?: string;
+	messages?: string[];
+}
+
 export interface ThemeConfig {
 	accent_color: string;
 	aurora_speed: number;
@@ -24,6 +30,11 @@ export interface AppConfig {
 	theme: ThemeConfig;
 }
 
+export interface AppState {
+	last_user?: string;
+	last_session?: string;
+}
+
 const isWebview = typeof globalThis.getSessions === 'function';
 
 const devStubs = {
@@ -32,11 +43,11 @@ const devStubs = {
 		{ name: 'Sway', cmd: ['sway'], type: 'wayland', desktop: 'sway' },
 		{ name: 'i3', cmd: ['i3'], type: 'x11', desktop: 'i3' }
 	],
-	login: async (username: string, _password: string): Promise<Result> => {
+	login: async (username: string, _password: string): Promise<LoginResult> => {
 		console.log(`[dev] login(${username}, ***)`);
 		await new Promise((r) => setTimeout(r, 800));
 		if (username === 'fail') return { ok: false, error: 'Invalid credentials' };
-		return { ok: true };
+		return { ok: true, messages: ['Welcome back!'] };
 	},
 	startSession: async (cmd: string[]): Promise<Result> => {
 		console.log(`[dev] startSession(${cmd.join(' ')})`);
@@ -51,16 +62,26 @@ const devStubs = {
 	getConfig: async (): Promise<AppConfig> => ({
 		power: { enabled: true },
 		theme: { accent_color: '', aurora_speed: 1.0 }
-	})
+	}),
+	getLastState: async (): Promise<AppState> => ({
+		last_user: 'demo',
+		last_session: 'Sway'
+	}),
+	saveState: async (s: AppState): Promise<Result> => {
+		console.log(`[dev] saveState`, s);
+		return { ok: true };
+	}
 };
 
 declare global {
 	function getSessions(): Promise<Session[]>;
-	function login(username: string, password: string): Promise<Result>;
+	function login(username: string, password: string): Promise<LoginResult>;
 	function startSession(cmd: string[]): Promise<Result>;
 	function getHostname(): Promise<string>;
 	function powerAction(action: string): Promise<Result>;
 	function getConfig(): Promise<AppConfig>;
+	function getLastState(): Promise<AppState>;
+	function saveState(s: AppState): Promise<Result>;
 }
 
 export const bridge = isWebview
@@ -70,6 +91,8 @@ export const bridge = isWebview
 			startSession: (cmd: string[]) => globalThis.startSession(cmd),
 			getHostname: () => globalThis.getHostname(),
 			powerAction: (action: string) => globalThis.powerAction(action),
-			getConfig: () => globalThis.getConfig()
+			getConfig: () => globalThis.getConfig(),
+			getLastState: () => globalThis.getLastState(),
+			saveState: (s: AppState) => globalThis.saveState(s)
 		}
 	: devStubs;

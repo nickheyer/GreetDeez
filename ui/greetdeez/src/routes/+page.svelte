@@ -1,19 +1,21 @@
 <script lang="ts">
 	import { bridge, type Session, type AppConfig } from '$lib/bridge';
 	import { onMount } from 'svelte';
-	import { LoaderCircle, Power, RotateCcw, Moon } from '@lucide/svelte';
+	import { LoaderCircle, Power, RotateCcw, Moon, TriangleAlert } from '@lucide/svelte';
 
 	let username = $state('');
 	let password = $state('');
 	let sessions = $state<Session[]>([]);
 	let selectedSessionIdx = $state('0');
 	let errorMsg = $state('');
-	let status = $state<'idle' | 'authenticating' | 'starting'>('idle');
+	let pamMessages = $state<string[]>([]);
+	let status = $state<'idle' | 'authenticating' | 'starting' | 'cooldown'>('idle');
 	let hostname = $state('');
 	let now = $state(new Date());
 	let shaking = $state(false);
 	let success = $state(false);
 	let cfg = $state<AppConfig | null>(null);
+	let capsLock = $state(false);
 
 	let passwordInput: HTMLInputElement | undefined = $state();
 	let usernameInput: HTMLInputElement | undefined = $state();
@@ -24,9 +26,31 @@
 		now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
 	);
 	let powerEnabled = $derived(cfg?.power?.enabled ?? true);
+	let formDisabled = $derived(status !== 'idle');
 
 	onMount(() => {
-		bridge.getSessions().then((s) => (sessions = s));
+		bridge.getSessions().then((s) => {
+			sessions = s;
+
+			// Restore last session after sessions are loaded
+			bridge.getLastState().then((st) => {
+				if (st.last_user) {
+					username = st.last_user;
+				}
+				if (st.last_session && s.length > 0) {
+					const idx = s.findIndex((sess) => sess.name === st.last_session);
+					if (idx >= 0) {
+						selectedSessionIdx = String(idx);
+					}
+				}
+				// Focus the right field based on whether we restored a username
+				if (username) {
+					passwordInput?.focus();
+				} else {
+					usernameInput?.focus();
+				}
+			});
+		});
 		bridge.getHostname().then((h) => (hostname = h));
 		bridge.getConfig().then((c) => {
 			cfg = c;
@@ -42,11 +66,15 @@
 		});
 
 		const timer = setInterval(() => (now = new Date()), 1000);
-		usernameInput?.focus();
 		return () => clearInterval(timer);
 	});
 
+	function handleKeydown(e: KeyboardEvent) {
+		capsLock = e.getModifierState('CapsLock');
+	}
+
 	function handleUsernameKeydown(e: KeyboardEvent) {
+		handleKeydown(e);
 		if (e.key === 'Enter' && username) {
 			e.preventDefault();
 			passwordInput?.focus();
@@ -58,18 +86,29 @@
 		if (!username || !password || !selectedSession) return;
 
 		errorMsg = '';
+		pamMessages = [];
 		status = 'authenticating';
 
 		const authResult = await bridge.login(username, password);
 		if (!authResult.ok) {
 			errorMsg = authResult.error ?? 'Authentication failed';
-			status = 'idle';
+			status = 'cooldown';
 			password = '';
 			shaking = true;
 			setTimeout(() => (shaking = false), 500);
 			setTimeout(() => (errorMsg = ''), 4000);
-			passwordInput?.focus();
+
+			// Rate limit: 2s cooldown after failed auth
+			setTimeout(() => {
+				status = 'idle';
+				passwordInput?.focus();
+			}, 2000);
 			return;
+		}
+
+		// Collect PAM info messages (MOTD, password expiry, etc.)
+		if (authResult.messages && authResult.messages.length > 0) {
+			pamMessages = authResult.messages;
 		}
 
 		status = 'starting';
@@ -82,6 +121,12 @@
 			return;
 		}
 
+		// Save state for next login
+		bridge.saveState({
+			last_user: username,
+			last_session: selectedSession.name
+		});
+
 		success = true;
 	}
 
@@ -89,6 +134,8 @@
 		await bridge.powerAction(action);
 	}
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="flex h-full w-full flex-col items-center justify-center gap-12" class:animate-success-fade={success}>
 	<div class="animate-fade-up flex flex-col items-center gap-1 delay-100">
@@ -113,27 +160,44 @@
 			placeholder="Username"
 			bind:value={username}
 			onkeydown={handleUsernameKeydown}
-			disabled={status !== 'idle'}
+			disabled={formDisabled}
 			autocomplete="off"
 			class="input-field"
 		/>
 
-		<input
-			bind:this={passwordInput}
-			type="password"
-			placeholder="Password"
-			bind:value={password}
-			disabled={status !== 'idle'}
-			class="input-field"
-		/>
+		<div class="relative w-full">
+			<input
+				bind:this={passwordInput}
+				type="password"
+				placeholder="Password"
+				bind:value={password}
+				onkeydown={handleKeydown}
+				disabled={formDisabled}
+				class="input-field w-full"
+			/>
+			{#if capsLock}
+				<div class="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1 text-warning">
+					<TriangleAlert size={14} />
+					<span class="text-[10px] font-medium uppercase tracking-wider">Caps Lock</span>
+				</div>
+			{/if}
+		</div>
 
 		{#if errorMsg}
 			<p class="animate-slide-in text-sm text-error">{errorMsg}</p>
 		{/if}
 
+		{#if pamMessages.length > 0}
+			<div class="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+				{#each pamMessages as msg}
+					<p class="animate-slide-in text-xs text-text-muted">{msg}</p>
+				{/each}
+			</div>
+		{/if}
+
 		<button
 			type="submit"
-			disabled={status !== 'idle'}
+			disabled={formDisabled}
 			class="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 py-3 text-sm font-medium text-text transition-all duration-200 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
 		>
 			{#if status === 'authenticating'}
@@ -142,6 +206,9 @@
 			{:else if status === 'starting'}
 				<LoaderCircle size={16} class="animate-spin-slow" />
 				Starting session...
+			{:else if status === 'cooldown'}
+				<LoaderCircle size={16} class="animate-spin-slow" />
+				Please wait...
 			{:else}
 				Log in
 			{/if}

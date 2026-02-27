@@ -7,9 +7,41 @@
   };
 
   outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        # Pre-fetch npm dependencies for offline build in the Nix sandbox.
+        # To update after changing package-lock.json:
+        #   nix run nixpkgs#prefetch-npm-deps -- ui/greetdeez/package-lock.json
+        npmDeps = pkgs.fetchNpmDeps {
+          src = ./ui/greetdeez;
+          name = "greetdeez-ui-npm-deps";
+          # Replace with real hash from prefetch-npm-deps:
+          hash = pkgs.lib.fakeHash;
+        };
+
+        # Build the Svelte UI as a standalone derivation.
+        ui = pkgs.stdenv.mkDerivation {
+          pname = "greetdeez-ui";
+          version = "0.1.0";
+          src = ./ui/greetdeez;
+
+          nativeBuildInputs = with pkgs; [
+            nodejs
+            npmHooks.npmConfigHook
+          ];
+
+          inherit npmDeps;
+
+          buildPhase = ''
+            npm run build
+          '';
+
+          installPhase = ''
+            cp -r build $out
+          '';
+        };
       in
       {
         packages.default = pkgs.buildGoModule {
@@ -17,14 +49,12 @@
           version = "0.1.0";
           src = ./.;
 
-          # Replace with the real hash after first build attempt:
+          # Replace with real hash after first build attempt:
           #   nix build .# 2>&1 | grep 'got:' | awk '{print $2}'
           vendorHash = pkgs.lib.fakeHash;
 
           nativeBuildInputs = with pkgs; [
             pkg-config
-            nodejs
-            npmHooks.npmConfigHook
           ];
 
           buildInputs = with pkgs; [
@@ -34,11 +64,9 @@
 
           CGO_ENABLED = "1";
 
+          # Copy pre-built UI into the source tree before Go embeds it.
           preBuild = ''
-            cd ui/greetdeez
-            npm ci
-            npm run build
-            cd ../..
+            cp -r ${ui} ui/greetdeez/build
           '';
 
           postInstall = ''
@@ -89,6 +117,12 @@
                 default = pkgs.cage;
                 description = "The cage package to use.";
               };
+            };
+
+            settings = lib.mkOption {
+              type = lib.types.attrs;
+              default = {};
+              description = "greetdeez.conf settings (TOML attrs).";
             };
           };
 

@@ -1,9 +1,18 @@
-.PHONY: build ui mockgreetd dev dev-quick dev-greetd dev-greetd-build install uninstall clean package test
+.PHONY: build ui mockgreetd dev dev-quick dev-greetd dev-greetd-build install uninstall clean package test deploy-vm
+
+# override CGO flags w/ latest wv. webview_go hardcodes pkg-config webkit2gtk-4.0, but most distros ship 4.1
+WEBKIT_PKG := $(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo webkit2gtk-4.1 || echo webkit2gtk-4.0)
+CGO_CXXFLAGS_EXTRA := $(shell pkg-config --cflags $(WEBKIT_PKG) gtk+-3.0)
+CGO_LDFLAGS_EXTRA := $(shell pkg-config --libs $(WEBKIT_PKG) gtk+-3.0)
 
 # Build
 build: ui
 	@mkdir -p bin
-	CGO_ENABLED=1 go build -o bin/greetdeez ./cmd/greetdeez
+	CGO_ENABLED=1 \
+	CGO_CFLAGS="$(CGO_CXXFLAGS_EXTRA)" \
+	CGO_CXXFLAGS="$(CGO_CXXFLAGS_EXTRA)" \
+	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" \
+	go build -o bin/greetdeez ./cmd/greetdeez
 
 ui:
 	cd ui/greetdeez && npm install && npm run build
@@ -60,6 +69,25 @@ clean:
 	rm -rf bin/
 	rm -rf ui/greetdeez/build ui/greetdeez/.svelte-kit
 	rm -rf dist/
+
+# Deploy to dev VM (KVM/QEMU) via 9p shared filesystem.
+# The VM must mount the shared dir (e.g. /mnt/greetdeez).
+# Set VM_HOST to the VM's SSH address if you want auto-restart:
+#   make deploy-vm VM_HOST=dev-vm
+VM_HOST ?=
+VM_MOUNT ?= /mnt/greetdeez
+
+deploy-vm: build
+	@mkdir -p dist
+	cp bin/greetdeez dist/
+	cp greetd.toml greetdeez.conf dist/
+	@echo "Deployed to dist/ (shared via 9p at $(VM_MOUNT))"
+ifdef VM_HOST
+	ssh $(VM_HOST) 'sudo cp $(VM_MOUNT)/greetdeez /usr/bin/greetdeez && \
+		sudo cp $(VM_MOUNT)/greetdeez.conf /etc/greetd/greetdeez.conf && \
+		sudo systemctl restart greetd'
+	@echo "Restarted greetd on $(VM_HOST)"
+endif
 
 # Package (via goreleaser)
 package: build

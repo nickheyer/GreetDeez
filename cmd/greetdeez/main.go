@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,14 +18,21 @@ import (
 	"github.com/nickheyer/greetdeez/internal/config"
 	"github.com/nickheyer/greetdeez/internal/greetd"
 	"github.com/nickheyer/greetdeez/internal/sessions"
+	"github.com/nickheyer/greetdeez/internal/state"
 	"github.com/nickheyer/greetdeez/pkg/binds"
-	embed "github.com/nickheyer/greetdeez/ui/greetdeez"
+	uiembed "github.com/nickheyer/greetdeez/ui/greetdeez"
 	webview "github.com/webview/webview_go"
 )
 
 type result struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
+}
+
+type loginResult struct {
+	OK       bool     `json:"ok"`
+	Error    string   `json:"error,omitempty"`
+	Messages []string `json:"messages,omitempty"`
 }
 
 func main() {
@@ -67,8 +75,18 @@ func main() {
 		w.Terminate()
 	}()
 
-	slog.Info("navigating webview", "url", navURL)
-	w.Navigate(navURL)
+	// Show a dark splash immediately to mask webkit init latency.
+	// The real Svelte app loads over it once the HTTP server is ready.
+	w.Navigate("data:text/html," + url.PathEscape(uiembed.SplashHTML))
+
+	// Navigate to the real app on a goroutine so w.Run() can start the event loop.
+	go func() {
+		slog.Info("navigating webview", "url", navURL)
+		w.Dispatch(func() {
+			w.Navigate(navURL)
+		})
+	}()
+
 	w.Run()
 }
 
@@ -88,7 +106,26 @@ func loadConfig(path string) config.Config {
 		slog.Error("config unmarshal failed", "path", path, "error", err)
 		os.Exit(1)
 	}
+	validatePowerCmds(&cfg)
 	return cfg
+}
+
+func validatePowerCmds(cfg *config.Config) {
+	if !cfg.Power.Enabled {
+		return
+	}
+	check := func(name string, cmd []string) {
+		if len(cmd) == 0 {
+			slog.Warn("no command configured for power action", "action", name)
+			return
+		}
+		if _, err := exec.LookPath(cmd[0]); err != nil {
+			slog.Warn("power command not found", "action", name, "cmd", cmd[0])
+		}
+	}
+	check("poweroff", cfg.Power.PoweroffCmd)
+	check("reboot", cfg.Power.RebootCmd)
+	check("suspend", cfg.Power.SuspendCmd)
 }
 
 func connectGreetd(devMode bool) *greetd.Client {
@@ -96,10 +133,10 @@ func connectGreetd(devMode bool) *greetd.Client {
 	if err != nil {
 		if devMode {
 			slog.Warn("greetd unavailable, running in dev mode", "error", err)
-		} else {
-			slog.Error("greetd connection failed", "error", err)
+			return nil
 		}
-		return nil
+		slog.Error("greetd connection failed", "error", err)
+		os.Exit(1)
 	}
 	slog.Info("connected to greetd")
 	return client
@@ -110,19 +147,24 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config)
 		return sessions.List(cfg.Sessions.Dirs)
 	})
 
-	w.Bind("login", func(username, password string) result {
+	w.Bind("login", func(username, password string) loginResult {
 		if client == nil {
 			slog.Debug("dev: login", "username", username)
-			return result{OK: true}
+			return loginResult{OK: true}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.Auth.Timeout())
 		defer cancel()
-		if err := client.Authenticate(ctx, username, password); err != nil {
+		authResult, err := client.Authenticate(ctx, username, password)
+		if err != nil {
 			slog.Warn("authentication failed", "username", username, "error", err)
-			return result{OK: false, Error: err.Error()}
+			return loginResult{OK: false, Error: err.Error()}
 		}
 		slog.Info("authenticated", "username", username)
-		return result{OK: true}
+		var msgs []string
+		if authResult != nil {
+			msgs = authResult.Messages
+		}
+		return loginResult{OK: true, Messages: msgs}
 	})
 
 	w.Bind("startSession", func(cmd []string) result {
@@ -186,11 +228,23 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config)
 	w.Bind("getConfig", func() config.Config {
 		return *cfg
 	})
+
+	w.Bind("getLastState", func() state.State {
+		return state.Load()
+	})
+
+	w.Bind("saveState", func(s state.State) result {
+		if err := state.Save(s); err != nil {
+			slog.Warn("failed to save state", "error", err)
+			return result{OK: false, Error: err.Error()}
+		}
+		return result{OK: true}
+	})
 }
 
 // serveEmbeddedUI starts an HTTP server for the embedded SvelteKit build on a random port.
 func serveEmbeddedUI() (string, error) {
-	sub, err := embed.BuildFS()
+	sub, err := uiembed.BuildFS()
 	if err != nil {
 		return "", fmt.Errorf("embedded fs: %w", err)
 	}

@@ -154,40 +154,50 @@ func (c *Client) CancelSession(ctx context.Context) (*Response, error) {
 	})
 }
 
+// AuthResult contains the outcome of an Authenticate call,
+// including any informational PAM messages collected during the flow.
+type AuthResult struct {
+	Messages []string // non-secret auth messages (info, errors, MOTD, etc.)
+}
+
 // Authenticate handles the full create_session -> post_auth_response flow,
-// cancelling any stale session first.
-func (c *Client) Authenticate(ctx context.Context, username, password string) error {
+// cancelling any stale session first. Returns collected PAM info messages on success.
+func (c *Client) Authenticate(ctx context.Context, username, password string) (*AuthResult, error) {
 	c.CancelSession(ctx)
 
 	resp, err := c.CreateSession(ctx, username)
 	if err != nil {
-		return fmt.Errorf("create_session: %w", err)
+		return nil, fmt.Errorf("create_session: %w", err)
 	}
 
 	if resp.Type == "error" {
-		return fmt.Errorf("greetd: %s", deref(resp.Description))
+		return nil, fmt.Errorf("greetd: %s", deref(resp.Description))
 	}
 
+	var messages []string
 	for resp.Type == "auth_message" {
 		var reply *string
 		if resp.AuthMessageType != nil && *resp.AuthMessageType == "secret" {
 			reply = &password
+		} else if resp.AuthMessage != nil && *resp.AuthMessage != "" {
+			// Collect non-secret messages (info, visible prompts, MOTD, etc.)
+			messages = append(messages, *resp.AuthMessage)
 		}
 
 		resp, err = c.PostAuthResponse(ctx, reply)
 		if err != nil {
-			return fmt.Errorf("post_auth: %w", err)
+			return nil, fmt.Errorf("post_auth: %w", err)
 		}
 
 		if resp.Type == "error" {
-			return fmt.Errorf("auth failed: %s", deref(resp.Description))
+			return nil, fmt.Errorf("auth failed: %s", deref(resp.Description))
 		}
 	}
 
 	if resp.Type != "success" {
-		return fmt.Errorf("unexpected response: %s", resp.Type)
+		return nil, fmt.Errorf("unexpected response: %s", resp.Type)
 	}
-	return nil
+	return &AuthResult{Messages: messages}, nil
 }
 
 func deref(s *string) string {

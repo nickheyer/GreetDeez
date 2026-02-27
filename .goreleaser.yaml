@@ -1,9 +1,5 @@
 version: 2
 
-before:
-  hooks:
-    - cmd: bash -c "cd ui/greetdeez && npm ci && npm run build"
-
 builds:
   - id: greetdeez
     main: ./cmd/greetdeez
@@ -18,6 +14,17 @@ builds:
     ldflags:
       - -s -w -X main.version={{.Version}}
 
+archives:
+  - id: tarball
+    format: tar.gz
+    name_template: "greetdeez_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - greetd.toml
+      - greetdeez.conf
+      - packaging/scripts/post-install.sh
+      - LICENSE
+      - README.md
+
 nfpms:
   - id: greetdeez
     package_name: greetdeez
@@ -31,6 +38,7 @@ nfpms:
       - rpm
       - archlinux
       - apk
+    bindir: /usr/bin
     contents:
       - src: greetd.toml
         dst: /etc/greetd/greetd.toml

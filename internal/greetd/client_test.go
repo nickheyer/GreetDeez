@@ -42,8 +42,12 @@ func TestAuthenticate_Success(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := c.Authenticate(ctx, "alice", "secret"); err != nil {
+	result, err := c.Authenticate(ctx, "alice", "secret")
+	if err != nil {
 		t.Fatalf("Authenticate: %v", err)
+	}
+	if result == nil {
+		t.Fatal("Authenticate returned nil result")
 	}
 }
 
@@ -54,7 +58,7 @@ func TestAuthenticate_WrongPassword(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := c.Authenticate(ctx, "alice", "wrong")
+	_, err := c.Authenticate(ctx, "alice", "wrong")
 	if err == nil {
 		t.Fatal("expected error for wrong password, got nil")
 	}
@@ -67,7 +71,7 @@ func TestAuthenticate_UnknownUser(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := c.Authenticate(ctx, "nobody", "test")
+	_, err := c.Authenticate(ctx, "nobody", "test")
 	if err == nil {
 		t.Fatal("expected error for unknown user, got nil")
 	}
@@ -84,7 +88,7 @@ func TestAuthenticate_Timeout(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
 
-	err := c.Authenticate(ctx, "alice", "secret")
+	_, err := c.Authenticate(ctx, "alice", "secret")
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
@@ -97,7 +101,7 @@ func TestStartSession(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := c.Authenticate(ctx, "alice", "secret"); err != nil {
+	if _, err := c.Authenticate(ctx, "alice", "secret"); err != nil {
 		t.Fatalf("Authenticate: %v", err)
 	}
 

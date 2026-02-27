@@ -19,6 +19,13 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev pkg-config
 
+      - name: Set CGO flags for webkit2gtk-4.1
+        run: |
+          echo "CGO_CFLAGS=$(pkg-config --cflags webkit2gtk-4.1 gtk+-3.0)" >> "$GITHUB_ENV"
+          echo "CGO_CXXFLAGS=$(pkg-config --cflags webkit2gtk-4.1 gtk+-3.0)" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=$(pkg-config --libs webkit2gtk-4.1 gtk+-3.0)" >> "$GITHUB_ENV"
+          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
+
       - uses: golangci/golangci-lint-action@v6
 
       - uses: actions/setup-node@v4

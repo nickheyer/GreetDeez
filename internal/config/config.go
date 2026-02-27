@@ -9,27 +9,27 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/viper"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 const DefaultConfigPath = "/etc/greetd/greetdeez.conf"
 
 type Config struct {
-	Window   WindowConfig   `mapstructure:"window"   json:"window"`
-	Auth     AuthConfig     `mapstructure:"auth"     json:"auth"`
-	Power    PowerConfig    `mapstructure:"power"    json:"power"`
-	Sessions SessionsConfig `mapstructure:"sessions" json:"sessions"`
-	Theme    ThemeConfig    `mapstructure:"theme"    json:"theme"`
+	Window   WindowConfig   `toml:"window"   json:"window"`
+	Auth     AuthConfig     `toml:"auth"     json:"auth"`
+	Power    PowerConfig    `toml:"power"    json:"power"`
+	Sessions SessionsConfig `toml:"sessions" json:"sessions"`
+	Theme    ThemeConfig    `toml:"theme"    json:"theme"`
 }
 
 type WindowConfig struct {
-	Title  string `mapstructure:"title"  json:"title"`
-	Width  int    `mapstructure:"width"  json:"width"`
-	Height int    `mapstructure:"height" json:"height"`
+	Title  string `toml:"title"  json:"title"`
+	Width  int    `toml:"width"  json:"width"`
+	Height int    `toml:"height" json:"height"`
 }
 
 type AuthConfig struct {
-	TimeoutSeconds int `mapstructure:"timeout_seconds" json:"timeout_seconds"`
+	TimeoutSeconds int `toml:"timeout_seconds" json:"timeout_seconds"`
 }
 
 func (a AuthConfig) Timeout() time.Duration {
@@ -37,81 +37,113 @@ func (a AuthConfig) Timeout() time.Duration {
 }
 
 type PowerConfig struct {
-	Enabled     bool     `mapstructure:"enabled"      json:"enabled"`
-	PoweroffCmd []string `mapstructure:"poweroff_cmd" json:"poweroff_cmd"`
-	RebootCmd   []string `mapstructure:"reboot_cmd"   json:"reboot_cmd"`
-	SuspendCmd  []string `mapstructure:"suspend_cmd"  json:"suspend_cmd"`
+	Enabled     bool     `toml:"enabled"      json:"enabled"`
+	PoweroffCmd []string `toml:"poweroff_cmd" json:"poweroff_cmd"`
+	RebootCmd   []string `toml:"reboot_cmd"   json:"reboot_cmd"`
+	SuspendCmd  []string `toml:"suspend_cmd"  json:"suspend_cmd"`
 }
 
 type SessionDir struct {
-	Path string `mapstructure:"path" json:"path"`
-	Type string `mapstructure:"type" json:"type"`
+	Path string `toml:"path" json:"path"`
+	Type string `toml:"type" json:"type"`
 }
 
 type SessionsConfig struct {
-	Dirs []SessionDir `mapstructure:"dirs" json:"dirs"`
+	Dirs []SessionDir `toml:"dirs" json:"dirs"`
 }
 
 type ThemeConfig struct {
-	AccentColor string  `mapstructure:"accent_color" json:"accent_color"`
-	AuroraSpeed float64 `mapstructure:"aurora_speed"  json:"aurora_speed"`
+	AccentColor string  `toml:"accent_color" json:"accent_color"`
+	AuroraSpeed float64 `toml:"aurora_speed"  json:"aurora_speed"`
 }
 
 // Load reads configuration with the following priority (highest wins):
 //
 //	environment variables (GREETDEEZ_*) > config file > detected host defaults
 func Load(path string) (Config, error) {
-	v := viper.New()
+	cfg := detectDefaults()
 
-	setDetectedDefaults(v)
-
-	v.SetConfigFile(path)
-	v.SetConfigType("toml")
-
-	v.SetEnvPrefix("GREETDEEZ")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			slog.Debug("no config file found, using detected defaults", "path", path)
-		} else if os.IsNotExist(err) {
-			slog.Debug("no config file found, using detected defaults", "path", path)
-		} else {
-			slog.Warn("failed to read config file, using detected defaults", "path", path, "error", err)
+	// Layer 2: config file overrides detected defaults
+	if data, err := os.ReadFile(path); err == nil {
+		if err := toml.Unmarshal(data, &cfg); err != nil {
+			return cfg, err
 		}
+		slog.Info("loaded config", "path", path)
+	} else if os.IsNotExist(err) {
+		slog.Debug("no config file found, using detected defaults", "path", path)
 	} else {
-		slog.Info("loaded config", "path", v.ConfigFileUsed())
+		slog.Warn("failed to read config file, using detected defaults", "path", path, "error", err)
 	}
 
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return cfg, err
-	}
+	// Layer 3: env vars override everything
+	applyEnvOverrides(&cfg)
+
 	return cfg, nil
 }
 
-func setDetectedDefaults(v *viper.Viper) {
-	v.SetDefault("window.title", "GreetDeez")
+func detectDefaults() Config {
 	w, h := detectDisplaySize()
-	v.SetDefault("window.width", w)
-	v.SetDefault("window.height", h)
-
-	v.SetDefault("auth.timeout_seconds", 30)
-
-	v.SetDefault("power.enabled", true)
 	poweroff, reboot, suspend := detectPowerCmds()
-	v.SetDefault("power.poweroff_cmd", poweroff)
-	v.SetDefault("power.reboot_cmd", reboot)
-	v.SetDefault("power.suspend_cmd", suspend)
 
-	v.SetDefault("sessions.dirs", []SessionDir{
-		{Path: "/usr/share/wayland-sessions", Type: "wayland"},
-		{Path: "/usr/share/xsessions", Type: "x11"},
-	})
+	return Config{
+		Window: WindowConfig{
+			Title:  "GreetDeez",
+			Width:  w,
+			Height: h,
+		},
+		Auth: AuthConfig{
+			TimeoutSeconds: 30,
+		},
+		Power: PowerConfig{
+			Enabled:     true,
+			PoweroffCmd: poweroff,
+			RebootCmd:   reboot,
+			SuspendCmd:  suspend,
+		},
+		Sessions: SessionsConfig{
+			Dirs: []SessionDir{
+				{Path: "/usr/share/wayland-sessions", Type: "wayland"},
+				{Path: "/usr/share/xsessions", Type: "x11"},
+			},
+		},
+		Theme: ThemeConfig{
+			AccentColor: "",
+			AuroraSpeed: 1.0,
+		},
+	}
+}
 
-	v.SetDefault("theme.accent_color", "")
-	v.SetDefault("theme.aurora_speed", 1.0)
+// applyEnvOverrides maps GREETDEEZ_* environment variables onto the config.
+func applyEnvOverrides(cfg *Config) {
+	if v := os.Getenv("GREETDEEZ_WINDOW_TITLE"); v != "" {
+		cfg.Window.Title = v
+	}
+	if v := os.Getenv("GREETDEEZ_WINDOW_WIDTH"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Window.Width = n
+		}
+	}
+	if v := os.Getenv("GREETDEEZ_WINDOW_HEIGHT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Window.Height = n
+		}
+	}
+	if v := os.Getenv("GREETDEEZ_AUTH_TIMEOUT_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Auth.TimeoutSeconds = n
+		}
+	}
+	if v := os.Getenv("GREETDEEZ_POWER_ENABLED"); v != "" {
+		cfg.Power.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("GREETDEEZ_THEME_ACCENT_COLOR"); v != "" {
+		cfg.Theme.AccentColor = v
+	}
+	if v := os.Getenv("GREETDEEZ_THEME_AURORA_SPEED"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.Theme.AuroraSpeed = f
+		}
+	}
 }
 
 // detectDisplaySize reads the preferred mode from the DRM subsystem.
