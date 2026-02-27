@@ -61,11 +61,14 @@ func main() {
 	w := webview.New(*devMode)
 	defer w.Destroy()
 
-	binds.Fullscreen(w.Window())
-	// w.SetTitle(cfg.Window.Title)
-	// w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
+	if *devMode {
+		w.SetTitle("GreetDeez [dev]")
+		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
+	} else {
+		binds.Fullscreen(w.Window())
+	}
 
-	bindFunctions(w, client, &cfg)
+	bindFunctions(w, client, &cfg, *devMode)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -142,7 +145,7 @@ func connectGreetd(devMode bool) *greetd.Client {
 	return client
 }
 
-func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config) {
+func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config, devMode bool) {
 	w.Bind("getSessions", func() []sessions.Session {
 		return sessions.List(cfg.Sessions.Dirs)
 	})
@@ -168,8 +171,8 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config)
 	})
 
 	w.Bind("startSession", func(cmd []string) result {
-		if client == nil {
-			slog.Debug("dev: startSession", "cmd", cmd)
+		if devMode && client == nil {
+			slog.Debug("dev: startSession (no-op)", "cmd", cmd)
 			return result{OK: true}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.Auth.Timeout())
@@ -196,8 +199,8 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config)
 		if !cfg.Power.Enabled {
 			return result{OK: false, Error: "power actions disabled"}
 		}
-		if client == nil {
-			slog.Debug("dev: powerAction", "action", action)
+		if devMode {
+			slog.Debug("dev: powerAction (no-op)", "action", action)
 			return result{OK: true}
 		}
 

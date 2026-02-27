@@ -1,18 +1,14 @@
 .PHONY: build ui mockgreetd dev dev-quick dev-greetd dev-greetd-build install uninstall clean package test deploy-vm
 
-# override CGO flags w/ latest wv. webview_go hardcodes pkg-config webkit2gtk-4.0, but most distros ship 4.1
-WEBKIT_PKG := $(shell pkg-config --exists webkit2gtk-4.1 2>/dev/null && echo webkit2gtk-4.1 || echo webkit2gtk-4.0)
-CGO_CXXFLAGS_EXTRA := $(shell pkg-config --cflags $(WEBKIT_PKG) gtk+-3.0)
-CGO_LDFLAGS_EXTRA := $(shell pkg-config --libs $(WEBKIT_PKG) gtk+-3.0)
+# NOTE: webview_go hardcodes `#cgo pkg-config: gtk+-3.0 webkit2gtk-4.0` in its
+# Go source. CGO env vars are ADDITIVE to #cgo directives, not overrides.
+# Adding webkit2gtk-4.1 flags here would link BOTH 4.0 (libsoup2) and 4.1
+# (libsoup3), which crashes immediately. Let the library handle its own flags.
 
 # Build
 build: ui
 	@mkdir -p bin
-	CGO_ENABLED=1 \
-	CGO_CFLAGS="$(CGO_CXXFLAGS_EXTRA)" \
-	CGO_CXXFLAGS="$(CGO_CXXFLAGS_EXTRA)" \
-	CGO_LDFLAGS="$(CGO_LDFLAGS_EXTRA)" \
-	go build -o bin/greetdeez ./cmd/greetdeez
+	CGO_ENABLED=1 go build -o bin/greetdeez ./cmd/greetdeez
 
 ui:
 	cd ui/greetdeez && npm install && npm run build
@@ -28,12 +24,15 @@ dev:
 	cd ui/greetdeez && npm run dev
 
 # T2 - mock greetd + go runtime
+# GDK_BACKEND=x11 forces Xwayland — webkit2gtk has protocol errors on KWin Wayland
 dev-quick: mockgreetd build
 	@echo "Starting mock greetd..."
 	@SOCK=$$(mktemp -u /tmp/greetd.XXXXXX.sock); \
 	./bin/mockgreetd -sock "$$SOCK" -users "test:test,demo:demo" & \
 	MOCK_PID=$$!; \
 	sleep 0.5; \
+	GDK_BACKEND=x11 \
+	WEBKIT_DISABLE_DMABUF_RENDERER=1 \
 	GREETD_SOCK="$$SOCK" \
 	GREETDEEZ_SESSION_DIRS="wayland=testdata/sessions/wayland:x11=testdata/sessions/x11" \
 	./bin/greetdeez -dev; \
