@@ -32,8 +32,8 @@ nfpms:
       - archlinux
       - apk
     contents:
-      - src: greetdeez.toml
-        dst: /etc/greetd/greetdeez.toml
+      - src: greetd.toml
+        dst: /etc/greetd/greetd.toml
     scripts:
       postinstall: scripts/post-install.sh
     overrides:

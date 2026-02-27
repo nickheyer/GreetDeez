@@ -13,10 +13,10 @@ if [ -f "$CONFIG" ]; then
         echo "greetd config already configured for greetdeez, skipping."
     else
         cp "$CONFIG" "$CONFIG.bak"
-        cp /etc/greetd/greetdeez.toml "$CONFIG"
+        cp /etc/greetd/greetd.toml "$CONFIG"
         echo "Installed greetdeez config to $CONFIG (backup: $CONFIG.bak)"
     fi
 else
-    cp /etc/greetd/greetdeez.toml "$CONFIG"
+    cp /etc/greetd/greetd.toml "$CONFIG"
     echo "Installed greetdeez config to $CONFIG"
 fi

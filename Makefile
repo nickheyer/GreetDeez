@@ -43,11 +43,11 @@ PREFIX ?= /usr/local
 
 install: build
 	install -Dm755 bin/greetdeez $(DESTDIR)$(PREFIX)/bin/greetdeez
-	install -Dm644 greetdeez.toml $(DESTDIR)/etc/greetd/greetdeez.toml
+	install -Dm644 greetd.toml $(DESTDIR)/etc/greetd/greetd.toml
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/greetdeez
-	rm -f $(DESTDIR)/etc/greetd/greetdeez.toml
+	rm -f $(DESTDIR)/etc/greetd/greetd.toml
 
 # Misc
 clean:

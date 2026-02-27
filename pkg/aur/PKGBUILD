@@ -41,5 +41,5 @@ build() {
 package() {
     cd greetdeez
     install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
-    install -Dm644 greetdeez.toml "${pkgdir}/etc/greetd/greetdeez.toml"
+    install -Dm644 greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
 }
