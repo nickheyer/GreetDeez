@@ -1,4 +1,4 @@
-.PHONY: build ui mockgreetd dev dev-quick dev-greetd dev-greetd-build install uninstall clean package
+.PHONY: build ui mockgreetd dev dev-quick dev-greetd dev-greetd-build install uninstall clean package test
 
 # Build
 build: ui
@@ -44,10 +44,16 @@ PREFIX ?= /usr/local
 install: build
 	install -Dm755 bin/greetdeez $(DESTDIR)$(PREFIX)/bin/greetdeez
 	install -Dm644 greetd.toml $(DESTDIR)/etc/greetd/greetd.toml
+	install -Dm644 greetdeez.conf $(DESTDIR)/etc/greetd/greetdeez.conf
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/greetdeez
 	rm -f $(DESTDIR)/etc/greetd/greetd.toml
+	rm -f $(DESTDIR)/etc/greetd/greetdeez.conf
+
+# Test
+test:
+	go test ./...
 
 # Misc
 clean:
@@ -55,12 +61,6 @@ clean:
 	rm -rf ui/greetdeez/build ui/greetdeez/.svelte-kit
 	rm -rf dist/
 
-# Package
-NFPM := docker run --rm -v $(CURDIR):/tmp -w /tmp goreleaser/nfpm:latest package
-
+# Package (via goreleaser)
 package: build
-	@mkdir -p dist
-	$(NFPM) -p deb -t dist/
-	$(NFPM) -p rpm -t dist/
-	$(NFPM) -p archlinux -t dist/
-	$(NFPM) -p apk -t dist/
+	goreleaser release --snapshot --clean

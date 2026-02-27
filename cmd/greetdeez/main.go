@@ -200,6 +200,8 @@ func serveEmbeddedUI() (string, error) {
 		return "", err
 	}
 
+	fs := http.FileServer(http.FS(sub))
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Hashed assets get long-lived cache; HTML does not.
 		if ext := path.Ext(r.URL.Path); ext == ".js" || ext == ".css" || ext == ".woff2" {
@@ -207,7 +209,7 @@ func serveEmbeddedUI() (string, error) {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			}
 		}
-		http.FileServer(http.FS(sub)).ServeHTTP(w, r)
+		fs.ServeHTTP(w, r)
 	})
 
 	go func() {

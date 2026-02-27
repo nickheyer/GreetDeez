@@ -6,7 +6,7 @@
 	let username = $state('');
 	let password = $state('');
 	let sessions = $state<Session[]>([]);
-	let selectedSessionIdx = $state(0);
+	let selectedSessionIdx = $state('0');
 	let errorMsg = $state('');
 	let status = $state<'idle' | 'authenticating' | 'starting'>('idle');
 	let hostname = $state('');
@@ -18,7 +18,7 @@
 	let passwordInput: HTMLInputElement | undefined = $state();
 	let usernameInput: HTMLInputElement | undefined = $state();
 
-	let selectedSession = $derived(sessions[selectedSessionIdx]);
+	let selectedSession = $derived(sessions[parseInt(selectedSessionIdx)]);
 	let time = $derived(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 	let date = $derived(
 		now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
@@ -95,15 +95,15 @@
 		<span class="clock-glow text-7xl font-extralight tracking-wide">
 			{time}
 		</span>
-		<span class="text-base text-[var(--color-text-muted)]">{date}</span>
+		<span class="text-base text-text-muted">{date}</span>
 	</div>
 
 	<form
 		onsubmit={handleLogin}
-		class="login-panel animate-fade-up flex w-[380px] flex-col items-center gap-4 rounded-2xl border border-white/[0.08] p-8 backdrop-blur-xl delay-300"
+		class="login-panel animate-fade-up flex w-95 flex-col items-center gap-4 rounded-2xl border border-white/8 p-8 backdrop-blur-xl delay-300"
 		class:animate-shake={shaking}
 	>
-		<p class="mb-2 text-xs font-medium tracking-[0.2em] uppercase text-[var(--color-text-muted)]">
+		<p class="mb-2 text-xs font-medium tracking-[0.2em] uppercase text-text-muted">
 			{hostname}
 		</p>
 
@@ -128,13 +128,13 @@
 		/>
 
 		{#if errorMsg}
-			<p class="animate-slide-in text-sm text-[var(--color-error)]">{errorMsg}</p>
+			<p class="animate-slide-in text-sm text-error">{errorMsg}</p>
 		{/if}
 
 		<button
 			type="submit"
 			disabled={status !== 'idle'}
-			class="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 py-3 text-sm font-medium text-[var(--color-text)] transition-all duration-200 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+			class="flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 py-3 text-sm font-medium text-text transition-all duration-200 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
 		>
 			{#if status === 'authenticating'}
 				<LoaderCircle size={16} class="animate-spin-slow" />
@@ -151,10 +151,10 @@
 			<div class="flex w-full items-center justify-center gap-2 pt-1">
 				<select
 					bind:value={selectedSessionIdx}
-					class="cursor-pointer appearance-none rounded-md border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-[var(--color-text-muted)] outline-none transition-colors hover:border-white/20 hover:text-[var(--color-text)]"
+					class="cursor-pointer appearance-none rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-text-muted outline-none transition-colors hover:border-white/20 hover:text-text"
 				>
 					{#each sessions as session, i}
-						<option value={i} class="bg-[var(--color-bg)] text-[var(--color-text)]">
+						<option value={String(i)} class="bg-bg text-text">
 							{session.name} ({session.type})
 						</option>
 					{/each}

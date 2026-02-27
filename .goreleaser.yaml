@@ -34,8 +34,12 @@ nfpms:
     contents:
       - src: greetd.toml
         dst: /etc/greetd/greetd.toml
+        type: config
+      - src: greetdeez.conf
+        dst: /etc/greetd/greetdeez.conf
+        type: config
     scripts:
-      postinstall: scripts/post-install.sh
+      postinstall: packaging/scripts/post-install.sh
     overrides:
       deb:
         dependencies:
@@ -51,7 +55,6 @@ nfpms:
         dependencies:
           - greetd
           - webkit2gtk
-          - webkit2gtk-4.1
           - cage
       apk:
         dependencies:

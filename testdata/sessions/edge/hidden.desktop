@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=HiddenSession
+Exec=hidden-session
+Hidden=true

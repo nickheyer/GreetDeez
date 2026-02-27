@@ -113,8 +113,46 @@ func parseDesktopEntry(path, sessType string) (*Session, error) {
 
 	return &Session{
 		Name:    name,
-		Cmd:     strings.Fields(execStr),
+		Cmd:     parseExecString(execStr),
 		Type:    sessType,
 		Desktop: desktopNames,
 	}, nil
+}
+
+// parseExecString splits an Exec= value into arguments, respecting
+// double-quoted strings and backslash escapes (simple shlex-style).
+func parseExecString(s string) []string {
+	var args []string
+	var cur []byte
+	inQuote := false
+	escaped := false
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if escaped {
+			cur = append(cur, c)
+			escaped = false
+			continue
+		}
+		if c == '\\' {
+			escaped = true
+			continue
+		}
+		if c == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if c == ' ' && !inQuote {
+			if len(cur) > 0 {
+				args = append(args, string(cur))
+				cur = cur[:0]
+			}
+			continue
+		}
+		cur = append(cur, c)
+	}
+	if len(cur) > 0 {
+		args = append(args, string(cur))
+	}
+	return args
 }

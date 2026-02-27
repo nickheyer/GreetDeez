@@ -6,7 +6,7 @@ pkgdesc='Minimal, hackable display manager greeter for greetd — Go + Svelte 5 
 arch=('x86_64' 'aarch64')
 url='https://github.com/nickheyer/greetdeez'
 license=('MIT')
-depends=('webkit2gtk-4.1' 'cage')
+depends=('greetd' 'webkit2gtk' 'cage')
 makedepends=('go' 'npm' 'git')
 provides=('greetdeez')
 conflicts=('greetdeez')
@@ -42,4 +42,5 @@ package() {
     cd greetdeez
     install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
     install -Dm644 greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
+    install -Dm644 greetdeez.conf "${pkgdir}/etc/greetd/greetdeez.conf"
 }
