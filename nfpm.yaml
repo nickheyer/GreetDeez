@@ -2,7 +2,7 @@ name: greetdeez
 arch: amd64
 platform: linux
 version: v${VERSION:-0.1.0}
-maintainer: Nick Heyer <nick@nickheyer.com>
+maintainer: Nick Heyer <nick@heyer.app>
 description: Minimal, hackable display manager greeter for greetd. Go + Svelte 5, native webview via webkit2gtk.
 vendor: nickheyer
 homepage: https://github.com/nickheyer/greetdeez

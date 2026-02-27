@@ -23,7 +23,7 @@ nfpms:
     package_name: greetdeez
     vendor: nickheyer
     homepage: https://github.com/nickheyer/greetdeez
-    maintainer: Nick Heyer <nick@nickheyer.com>
+    maintainer: Nick Heyer <nick@heyer.app>
     description: Minimal, hackable display manager greeter for greetd
     license: MIT
     formats:
