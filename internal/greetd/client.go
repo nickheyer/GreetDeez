@@ -33,6 +33,7 @@ type postAuthResponse struct {
 type startSessionRequest struct {
 	Type string   `json:"type"`
 	Cmd  []string `json:"cmd"`
+	Env  []string `json:"env"`
 }
 
 type cancelSessionRequest struct {
@@ -139,11 +140,13 @@ func (c *Client) PostAuthResponse(ctx context.Context, response *string) (*Respo
 	})
 }
 
-// StartSession tells greetd to launch the user's session with the given command.
-func (c *Client) StartSession(ctx context.Context, cmd []string) (*Response, error) {
+// StartSession tells greetd to launch the user's session with the given command
+// and additional environment variables (e.g. XDG_SESSION_TYPE=wayland).
+func (c *Client) StartSession(ctx context.Context, cmd []string, env []string) (*Response, error) {
 	return c.roundTrip(ctx, startSessionRequest{
 		Type: "start_session",
 		Cmd:  cmd,
+		Env:  env,
 	})
 }
 

@@ -112,7 +112,7 @@
 		}
 
 		status = 'starting';
-		const startResult = await bridge.startSession(selectedSession.cmd);
+		const startResult = await bridge.startSession(selectedSession);
 		if (!startResult.ok) {
 			errorMsg = startResult.error ?? 'Failed to start session';
 			status = 'idle';

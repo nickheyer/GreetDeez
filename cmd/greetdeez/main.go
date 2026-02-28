@@ -172,14 +172,22 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config,
 		return loginResult{OK: true, Messages: msgs}
 	})
 
-	w.Bind("startSession", func(cmd []string) result {
+	w.Bind("startSession", func(sess sessions.Session) result {
+		env := buildSessionEnv(sess)
+		cmd := sess.Cmd
+
+		// Wrap X11 sessions with the configured wrapper (default: startx /usr/bin/env).
+		if sess.Type == "x11" && len(cfg.Sessions.X11Wrapper) > 0 {
+			cmd = append(append([]string{}, cfg.Sessions.X11Wrapper...), cmd...)
+		}
+
 		if devMode && client == nil {
-			slog.Debug("dev: startSession (no-op)", "cmd", cmd)
+			slog.Debug("dev: startSession (no-op)", "cmd", cmd, "env", env)
 			return result{OK: true}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.Auth.Timeout())
 		defer cancel()
-		resp, err := client.StartSession(ctx, cmd)
+		resp, err := client.StartSession(ctx, cmd, env)
 		if err != nil {
 			slog.Error("session start failed", "cmd", cmd, "error", err)
 			return result{OK: false, Error: err.Error()}
@@ -188,7 +196,7 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config,
 			slog.Error("session start rejected", "cmd", cmd, "type", resp.Type)
 			return result{OK: false, Error: "session start failed"}
 		}
-		slog.Info("session started", "cmd", cmd)
+		slog.Info("session started", "cmd", cmd, "env", env)
 		return result{OK: true}
 	})
 
@@ -245,6 +253,25 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config,
 		}
 		return result{OK: true}
 	})
+}
+
+// buildSessionEnv constructs environment variables for a session based on its
+// type and desktop names, matching what tuigreet/regreet do.
+func buildSessionEnv(sess sessions.Session) []string {
+	env := []string{"XDG_SESSION_TYPE=" + sess.Type}
+
+	desktop := strings.ReplaceAll(sess.Desktop, ";", ":")
+	desktop = strings.TrimRight(desktop, ":")
+	if desktop == "" {
+		desktop = strings.ToLower(sess.Name)
+	}
+
+	env = append(env,
+		"XDG_SESSION_DESKTOP="+desktop,
+		"XDG_CURRENT_DESKTOP="+desktop,
+		"DESKTOP_SESSION="+desktop,
+	)
+	return env
 }
 
 // gzipResponseWriter wraps http.ResponseWriter to compress responses.

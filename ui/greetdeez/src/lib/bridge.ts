@@ -43,14 +43,15 @@ const devStubs = {
 		{ name: 'Sway', cmd: ['sway'], type: 'wayland', desktop: 'sway' },
 		{ name: 'i3', cmd: ['i3'], type: 'x11', desktop: 'i3' }
 	],
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	login: async (username: string, _password: string): Promise<LoginResult> => {
 		console.log(`[dev] login(${username}, ***)`);
 		await new Promise((r) => setTimeout(r, 800));
 		if (username === 'fail') return { ok: false, error: 'Invalid credentials' };
 		return { ok: true, messages: ['Welcome back!'] };
 	},
-	startSession: async (cmd: string[]): Promise<Result> => {
-		console.log(`[dev] startSession(${cmd.join(' ')})`);
+	startSession: async (sess: Session): Promise<Result> => {
+		console.log(`[dev] startSession`, sess);
 		await new Promise((r) => setTimeout(r, 500));
 		return { ok: true };
 	},
@@ -76,7 +77,7 @@ const devStubs = {
 declare global {
 	function getSessions(): Promise<Session[]>;
 	function login(username: string, password: string): Promise<LoginResult>;
-	function startSession(cmd: string[]): Promise<Result>;
+	function startSession(sess: Session): Promise<Result>;
 	function getHostname(): Promise<string>;
 	function powerAction(action: string): Promise<Result>;
 	function getConfig(): Promise<AppConfig>;
@@ -88,7 +89,7 @@ export const bridge = isWebview
 	? {
 			getSessions: () => globalThis.getSessions(),
 			login: (username: string, password: string) => globalThis.login(username, password),
-			startSession: (cmd: string[]) => globalThis.startSession(cmd),
+			startSession: (sess: Session) => globalThis.startSession(sess),
 			getHostname: () => globalThis.getHostname(),
 			powerAction: (action: string) => globalThis.powerAction(action),
 			getConfig: () => globalThis.getConfig(),

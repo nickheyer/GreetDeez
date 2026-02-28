@@ -49,7 +49,8 @@ type SessionDir struct {
 }
 
 type SessionsConfig struct {
-	Dirs []SessionDir `toml:"dirs" json:"dirs"`
+	Dirs       []SessionDir `toml:"dirs"        json:"dirs"`
+	X11Wrapper []string     `toml:"x11_wrapper" json:"x11_wrapper"`
 }
 
 type ThemeConfig struct {
@@ -105,6 +106,7 @@ func detectDefaults() Config {
 				{Path: "/usr/share/wayland-sessions", Type: "wayland"},
 				{Path: "/usr/share/xsessions", Type: "x11"},
 			},
+			X11Wrapper: []string{"startx", "/usr/bin/env"},
 		},
 		Theme: ThemeConfig{
 			AccentColor: "",

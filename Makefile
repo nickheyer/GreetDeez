@@ -28,6 +28,9 @@ install: build
 	install -Dm644 config/greetdeez.conf $(DESTDIR)/etc/greetd/greetdeez.conf
 	install -Dm644 packaging/sysusers.d/greetdeez.conf $(DESTDIR)/usr/lib/sysusers.d/greetdeez.conf
 	install -Dm644 packaging/tmpfiles.d/greetdeez.conf $(DESTDIR)/usr/lib/tmpfiles.d/greetdeez.conf
+	install -Dm755 packaging/scripts/post-install.sh $(DESTDIR)/usr/share/greetdeez/post-install.sh
+	@# Run post-install when installing directly (not into a DESTDIR staging root).
+	@if [ -z "$(DESTDIR)" ]; then /usr/share/greetdeez/post-install.sh; fi
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/greetdeez
@@ -35,6 +38,7 @@ uninstall:
 	rm -f $(DESTDIR)/etc/greetd/greetdeez.conf
 	rm -f $(DESTDIR)/usr/lib/sysusers.d/greetdeez.conf
 	rm -f $(DESTDIR)/usr/lib/tmpfiles.d/greetdeez.conf
+	rm -rf $(DESTDIR)/usr/share/greetdeez
 
 # Test
 test:
