@@ -1,0 +1,28 @@
+post_install() {
+    # Create greetdeez system user
+    if ! id -u greetdeez >/dev/null 2>&1; then
+        useradd -r -s /usr/bin/nologin -d /var/lib/greetdeez -m greetdeez 2>/dev/null || true
+        echo "Created system user: greetdeez"
+    fi
+
+    # Install greetd config if none exists
+    if [ ! -f /etc/greetd/config.toml ]; then
+        if [ -f /etc/greetd/greetd.toml ]; then
+            cp /etc/greetd/greetd.toml /etc/greetd/config.toml
+            echo "Installed greetdeez config to /etc/greetd/config.toml"
+        fi
+    elif ! grep -q greetdeez /etc/greetd/config.toml; then
+        echo ""
+        echo "  greetd config.toml exists but does not reference greetdeez."
+        echo "  To use greetdeez, update [default_session] in /etc/greetd/config.toml:"
+        echo ""
+        echo "    [default_session]"
+        echo "    command = \"cage -s -- /usr/bin/greetdeez\""
+        echo "    user = \"greetdeez\""
+        echo ""
+    fi
+}
+
+post_upgrade() {
+    post_install
+}

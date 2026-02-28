@@ -19,8 +19,8 @@ archives:
     format: tar.gz
     name_template: "greetdeez_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      - greetd.toml
-      - greetdeez.conf
+      - config/greetd.toml
+      - config/greetdeez.conf
       - packaging/scripts/post-install.sh
       - LICENSE
       - README.md
@@ -40,10 +40,10 @@ nfpms:
       - apk
     bindir: /usr/bin
     contents:
-      - src: greetd.toml
+      - src: config/greetd.toml
         dst: /etc/greetd/greetd.toml
         type: config
-      - src: greetdeez.conf
+      - src: config/greetdeez.conf
         dst: /etc/greetd/greetdeez.conf
         type: config
     scripts:

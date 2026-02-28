@@ -147,7 +147,7 @@
 
 	<form
 		onsubmit={handleLogin}
-		class="login-panel animate-fade-up flex w-95 flex-col items-center gap-4 rounded-2xl border border-white/8 p-8 backdrop-blur-xl delay-300"
+		class="login-panel animate-fade-up flex w-95 flex-col items-center gap-4 rounded-2xl border border-white/8 p-8 delay-300"
 		class:animate-shake={shaking}
 	>
 		<p class="mb-2 text-xs font-medium tracking-[0.2em] uppercase text-text-muted">

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -245,6 +247,16 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config,
 	})
 }
 
+// gzipResponseWriter wraps http.ResponseWriter to compress responses.
+type gzipResponseWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w *gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
+}
+
 // serveEmbeddedUI starts an HTTP server for the embedded SvelteKit build on a random port.
 func serveEmbeddedUI() (string, error) {
 	sub, err := uiembed.BuildFS()
@@ -260,12 +272,26 @@ func serveEmbeddedUI() (string, error) {
 	fs := http.FileServer(http.FS(sub))
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ext := path.Ext(r.URL.Path)
+
 		// Hashed assets get long-lived cache; HTML does not.
-		if ext := path.Ext(r.URL.Path); ext == ".js" || ext == ".css" || ext == ".woff2" {
+		if ext == ".js" || ext == ".css" || ext == ".woff2" {
 			if strings.Contains(r.URL.Path, ".") {
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			}
 		}
+
+		// Gzip-compress text assets if the client supports it.
+		if (ext == ".js" || ext == ".css" || ext == ".html" || ext == "") &&
+			strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Del("Content-Length")
+			gz := gzip.NewWriter(w)
+			defer gz.Close()
+			fs.ServeHTTP(&gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
+			return
+		}
+
 		fs.ServeHTTP(w, r)
 	})
 
