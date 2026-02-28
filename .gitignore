@@ -5,6 +5,7 @@ junk/
 
 # Build artifacts
 dist/
+prebuilt/
 *.deb
 *.rpm
 *.pkg.tar.zst
