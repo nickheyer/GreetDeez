@@ -35,6 +35,11 @@ jobs:
             sed 's|x86_64-linux-gnu|aarch64-linux-gnu|g' "$pc" \
               > "/usr/lib/aarch64-linux-gnu/pkgconfig/$(basename "$pc")"
           done
+          for dir in /usr/lib/x86_64-linux-gnu/*/include; do
+            [ -d "$dir" ] || continue
+            target="${dir/x86_64-linux-gnu/aarch64-linux-gnu}"
+            mkdir -p "$target" && cp -a "$dir"/* "$target"/
+          done
           cd /usr/lib/aarch64-linux-gnu && for f in *.so.[0-9]*; do
             base="${f%.so.*}.so"; [ ! -e "$base" ] && ln -sf "$f" "$base"
           done
