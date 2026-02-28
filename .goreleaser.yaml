@@ -82,3 +82,8 @@ aurs:
 
 checksum:
   name_template: checksums.txt
+
+release:
+  github:
+    owner: nickheyer
+    name: GreetDeez

@@ -2,11 +2,9 @@
 
 Hackable display manager greeter for [greetd](https://git.sr.ht/~kennylevinsen/greetd), powered by Go + webkit2gtk.
 
-[![CI](https://github.com/nickheyer/greetdeez/actions/workflows/ci.yml/badge.svg)](https://github.com/nickheyer/greetdeez/actions/workflows/ci.yml)
+[![Release](https://github.com/nickheyer/GreetDeez/actions/workflows/release.yml/badge.svg)](https://github.com/nickheyer/GreetDeez/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![AUR](https://img.shields.io/aur/version/greetdeez-git)](https://aur.archlinux.org/packages/greetdeez-git)
-[![Packaging status](https://repology.org/badge/vertical-allrepos/greetdeez.svg?columns=3)](https://repology.org/project/greetdeez/versions)
-
+[![AUR](https://img.shields.io/aur/version/greetdeez-bin)](https://aur.archlinux.org/packages/greetdeez-bin)
 
 ## Features
 
@@ -20,12 +18,8 @@ Hackable display manager greeter for [greetd](https://git.sr.ht/~kennylevinsen/g
 
 ### Arch Linux (AUR)
 
-[![AUR greetdeez-git](https://repology.org/badge/version-for-repo/aur/greetdeez.svg)](https://aur.archlinux.org/packages/greetdeez-git)
-[![AUR greetdeez-bin](https://img.shields.io/aur/version/greetdeez-bin)](https://aur.archlinux.org/packages/greetdeez-bin)
-
 ```sh
-yay -S greetdeez-git   # build from source
-yay -S greetdeez-bin   # prebuilt binary
+yay -S greetdeez-bin
 ```
 
 ### Debian / Ubuntu
@@ -51,12 +45,23 @@ sudo apk add greetdeez
 
 ### From source
 
+Requires: Go 1.25+, Node.js 20+, `libwebkit2gtk-4.1-dev`, `pkg-config`
+
+Runtime dependencies: `greetd`, `cage`, `webkit2gtk-4.1`
+
 ```sh
 make build
 sudo make install
 ```
 
-Requires: Go 1.25+, Node.js 20+, `libwebkit2gtk-4.1-dev`, `pkg-config`
+After installing from source, create the system user and configure greetd manually:
+
+```sh
+sudo useradd -r -s /usr/bin/nologin -d /var/lib/greetdeez -m greetdeez
+sudo cp /etc/greetd/greetd.toml /etc/greetd/config.toml
+```
+
+Package installs handle both of these automatically.
 
 ## Configuration
 
@@ -108,7 +113,6 @@ aurora_speed = 1.0
 ```
 
 Environment variables (`GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, etc.) override file values.
-
 
 ## License
 
