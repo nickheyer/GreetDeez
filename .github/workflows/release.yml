@@ -40,11 +40,17 @@ jobs:
             target=$(echo "$dir" | sed 's/x86_64-linux-gnu/aarch64-linux-gnu/')
             mkdir -p "$target" && cp -a "$dir"/* "$target"/
           done
-          cd /usr/lib/aarch64-linux-gnu && for f in *.so.[0-9]*; do
-            base="${f%.so.*}.so"; [ ! -e "$base" ] && ln -sf "$f" "$base"
-          done
           mkdir -p /tmp/pkgconfig
           printf 'Name: webkit2gtk-4.0\nDescription: compat\nVersion: 2.44.0\nRequires: webkit2gtk-4.1\n' > /tmp/pkgconfig/webkit2gtk-4.0.pc
+          export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig:/tmp/pkgconfig
+          LIBS=$(pkg-config --libs-only-l webkit2gtk-4.0 gtk+-3.0 | tr ' ' '\n' | sed 's/^-l//' | sort -u)
+          cd /usr/lib/aarch64-linux-gnu
+          for lib in $LIBS; do
+            target="lib${lib}.so"
+            [ -e "$target" ] && continue
+            src=$(ls "lib${lib}".so.[0-9]* 2>/dev/null | head -1)
+            [ -n "$src" ] && ln -sf "$src" "$target"
+          done
 
       - name: Release
         env:
