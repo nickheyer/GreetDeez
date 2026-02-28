@@ -47,6 +47,7 @@ jobs:
           AUR_KEY: ${{ secrets.AUR_KEY }}
           PKG_CONFIG_PATH: /tmp/pkgconfig
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           mkdir -p ~/.ssh && ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
           goreleaser release --clean
 
