@@ -42,7 +42,8 @@ jobs:
             ghcr.io/goreleaser/goreleaser-cross:v1.25 \
             -c '
               git config --global --add safe.directory /project &&
-              apt-get update && apt-get install -y libwebkit2gtk-4.1-dev pkg-config &&
+              dpkg --add-architecture arm64 &&
+              apt-get update && apt-get install -y libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-dev:arm64 pkg-config &&
               mkdir -p /tmp/pkgconfig &&
               printf "Name: webkit2gtk-4.0\nDescription: compat shim\nVersion: 2.44.0\nRequires: webkit2gtk-4.1\n" > /tmp/pkgconfig/webkit2gtk-4.0.pc &&
               export PKG_CONFIG_PATH=/tmp/pkgconfig &&
