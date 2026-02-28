@@ -41,5 +41,7 @@ package() {
     install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
     install -Dm644 config/greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
     install -Dm644 config/greetdeez.conf "${pkgdir}/etc/greetd/greetdeez.conf"
+    install -Dm644 packaging/sysusers.d/greetdeez.conf "${pkgdir}/usr/lib/sysusers.d/greetdeez.conf"
+    install -Dm644 packaging/tmpfiles.d/greetdeez.conf "${pkgdir}/usr/lib/tmpfiles.d/greetdeez.conf"
     install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
