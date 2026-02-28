@@ -30,32 +30,23 @@ yay -S greetdeez-bin   # prebuilt binary
 
 ### Debian / Ubuntu
 
-[![Debian version](https://repology.org/badge/version-for-repo/debian_unstable/greetdeez.svg)](https://repology.org/project/greetdeez/versions)
-
-Download the `.deb` from [Releases](https://github.com/nickheyer/greetdeez/releases):
-
 ```sh
-sudo dpkg -i greetdeez_*.deb
+curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.deb.sh' | sudo bash
+sudo apt install greetdeez
 ```
 
-### Fedora
-
-[![Fedora version](https://repology.org/badge/version-for-repo/fedora_rawhide/greetdeez.svg)](https://repology.org/project/greetdeez/versions)
-
-Download the `.rpm` from [Releases](https://github.com/nickheyer/greetdeez/releases):
+### Fedora / RHEL
 
 ```sh
-sudo rpm -i greetdeez-*.rpm
+curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.rpm.sh' | sudo bash
+sudo dnf install greetdeez
 ```
 
 ### Alpine
 
-[![Alpine version](https://repology.org/badge/version-for-repo/alpine_edge/greetdeez.svg)](https://repology.org/project/greetdeez/versions)
-
-Download the `.apk` from [Releases](https://github.com/nickheyer/greetdeez/releases):
-
 ```sh
-sudo apk add --allow-untrusted greetdeez-*.apk
+curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.alpine.sh' | sudo bash
+sudo apk add greetdeez
 ```
 
 ### From source
