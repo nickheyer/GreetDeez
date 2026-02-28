@@ -18,10 +18,19 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo dpkg --add-architecture arm64
-          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list 2>/dev/null || true
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ noble main restricted universe" | sudo tee /etc/apt/sources.list.d/arm64.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ noble-updates main restricted universe" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+
+          # Pin existing repos to amd64 only (DEB822 format on Ubuntu 24.04)
+          sudo sed -i 's/^Types: deb/Types: deb\nArchitectures: amd64/' /etc/apt/sources.list.d/ubuntu.sources
+
+          # Add arm64 sources from ports.ubuntu.com
+          cat <<'EOF' | sudo tee /etc/apt/sources.list.d/arm64.sources
+          Types: deb
+          URIs: http://ports.ubuntu.com/
+          Suites: noble noble-updates noble-security noble-backports
+          Components: main restricted universe
+          Architectures: arm64
+          EOF
+
           sudo apt-get update
           sudo apt-get install -y \
             pkg-config \
