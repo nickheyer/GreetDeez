@@ -29,7 +29,7 @@ jobs:
       - name: Install cross-compile deps
         run: |
           dpkg --add-architecture arm64 && apt-get update -qq
-          apt-get install -yqq libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-0:arm64
+          apt-get install -yqq libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-0:arm64 python3-pip
           mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig
           for pc in /usr/lib/x86_64-linux-gnu/pkgconfig/*.pc; do
             sed 's|x86_64-linux-gnu|aarch64-linux-gnu|g' "$pc" \
