@@ -5,6 +5,7 @@ Hackable display manager greeter for [greetd](https://git.sr.ht/~kennylevinsen/g
 [![CI](https://github.com/nickheyer/greetdeez/actions/workflows/ci.yml/badge.svg)](https://github.com/nickheyer/greetdeez/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![AUR](https://img.shields.io/aur/version/greetdeez-git)](https://aur.archlinux.org/packages/greetdeez-git)
+[![Packaging status](https://repology.org/badge/vertical-allrepos/greetdeez.svg?columns=3)](https://repology.org/project/greetdeez/versions)
 
 
 ## Features
@@ -19,11 +20,17 @@ Hackable display manager greeter for [greetd](https://git.sr.ht/~kennylevinsen/g
 
 ### Arch Linux (AUR)
 
+[![AUR greetdeez-git](https://repology.org/badge/version-for-repo/aur/greetdeez.svg)](https://aur.archlinux.org/packages/greetdeez-git)
+[![AUR greetdeez-bin](https://img.shields.io/aur/version/greetdeez-bin)](https://aur.archlinux.org/packages/greetdeez-bin)
+
 ```sh
-yay -S greetdeez-git
+yay -S greetdeez-git   # build from source
+yay -S greetdeez-bin   # prebuilt binary
 ```
 
 ### Debian / Ubuntu
+
+[![Debian version](https://repology.org/badge/version-for-repo/debian_unstable/greetdeez.svg)](https://repology.org/project/greetdeez/versions)
 
 Download the `.deb` from [Releases](https://github.com/nickheyer/greetdeez/releases):
 
@@ -33,6 +40,8 @@ sudo dpkg -i greetdeez_*.deb
 
 ### Fedora
 
+[![Fedora version](https://repology.org/badge/version-for-repo/fedora_rawhide/greetdeez.svg)](https://repology.org/project/greetdeez/versions)
+
 Download the `.rpm` from [Releases](https://github.com/nickheyer/greetdeez/releases):
 
 ```sh
@@ -41,29 +50,12 @@ sudo rpm -i greetdeez-*.rpm
 
 ### Alpine
 
+[![Alpine version](https://repology.org/badge/version-for-repo/alpine_edge/greetdeez.svg)](https://repology.org/project/greetdeez/versions)
+
 Download the `.apk` from [Releases](https://github.com/nickheyer/greetdeez/releases):
 
 ```sh
 sudo apk add --allow-untrusted greetdeez-*.apk
-```
-
-### NixOS
-
-Add the flake to your inputs and enable the module:
-
-```nix
-{
-  inputs.greetdeez.url = "github:nickheyer/greetdeez";
-
-  # In your NixOS configuration:
-  programs.greetdeez.enable = true;
-}
-```
-
-Or build directly:
-
-```sh
-nix build github:nickheyer/greetdeez
 ```
 
 ### From source

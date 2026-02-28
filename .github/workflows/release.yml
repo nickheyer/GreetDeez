@@ -95,3 +95,67 @@ jobs:
             dist/*.apk
             dist/*.tar.gz
             dist/checksums.txt
+
+  publish-aur:
+    needs: release
+    runs-on: ubuntu-24.04
+    if: ${{ !contains(github.ref, '-') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for AUR key
+        id: aur-check
+        env:
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+        run: |
+          if [ -z "$AUR_KEY" ]; then
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all artifacts
+        if: steps.aur-check.outputs.has_key == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-parts/
+
+      - name: Merge artifacts
+        if: steps.aur-check.outputs.has_key == 'true'
+        run: |
+          mkdir -p dist
+          cp -r dist-parts/dist-amd64/* dist/ || true
+          # Merge artifacts.json from both arches before copying arm64 files
+          if [ -f dist/artifacts.json ] && [ -f dist-parts/dist-arm64/artifacts.json ]; then
+            jq -s 'add | unique_by(.name)' \
+              dist/artifacts.json \
+              dist-parts/dist-arm64/artifacts.json \
+              > dist/artifacts.merged.json
+            mv dist/artifacts.merged.json dist/artifacts.json
+          fi
+          cp -rn dist-parts/dist-arm64/* dist/ || true
+
+      - uses: actions/setup-go@v5
+        if: steps.aur-check.outputs.has_key == 'true'
+        with:
+          go-version: "1.25"
+
+      - name: Install GoReleaser
+        if: steps.aur-check.outputs.has_key == 'true'
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+
+      - name: Setup SSH for AUR
+        if: steps.aur-check.outputs.has_key == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Publish to AUR
+        if: steps.aur-check.outputs.has_key == 'true'
+        env:
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+        run: goreleaser release --skip=build,validate,publish
