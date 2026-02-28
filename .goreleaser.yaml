@@ -11,6 +11,12 @@ builds:
     goarch:
       - amd64
       - arm64
+    overrides:
+      - goos: linux
+        goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
+          - PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
     ldflags:
       - -s -w -X main.version={{.Version}}
 
@@ -81,7 +87,7 @@ aurs:
     license: MIT
     private_key: "{{ .Env.AUR_KEY }}"
     git_url: "ssh://aur@aur.archlinux.org/greetdeez-bin.git"
-    skip_upload: auto
+    skip_upload: '{{ if .Env.AUR_KEY }}auto{{ else }}true{{ end }}'
     depends:
       - greetd
       - webkit2gtk

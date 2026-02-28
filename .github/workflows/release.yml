@@ -8,22 +8,26 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            goarch: amd64
-          - runner: ubuntu-24.04-arm
-            goarch: arm64
-    runs-on: ${{ matrix.runner }}
+  release:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev pkg-config
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list 2>/dev/null || true
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ noble main restricted universe" | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ noble-updates main restricted universe" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libwebkit2gtk-4.1-dev \
+            gcc-aarch64-linux-gnu \
+            libwebkit2gtk-4.1-dev:arm64
 
       - name: Shim webkit2gtk-4.0 pkg-config
         run: |
@@ -35,7 +39,6 @@ jobs:
           Requires: webkit2gtk-4.1
           PC
           echo "PKG_CONFIG_PATH=$RUNNER_TEMP/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
-          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
 
       - uses: actions/setup-go@v5
         with:
@@ -47,54 +50,28 @@ jobs:
           cache: npm
           cache-dependency-path: ui/greetdeez/package-lock.json
 
-      - name: Install GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          install-only: true
-
       - name: Build UI
         run: cd ui/greetdeez && npm ci && npm run build
 
-      - name: Build and package
-        run: goreleaser release --split --skip=publish --clean
+      - name: Setup SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUR_KEY: ${{ secrets.AUR_KEY }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.goarch }}
+          name: dist
           path: dist/
-
-  release:
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist-parts/
-
-      - name: Merge artifacts
-        run: |
-          mkdir -p dist
-          cp -r dist-parts/dist-amd64/* dist/ || true
-          cp -r dist-parts/dist-arm64/* dist/ || true
-          ls -la dist/
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: |
-            dist/*.deb
-            dist/*.rpm
-            dist/*.pkg.tar.zst
-            dist/*.apk
-            dist/*.tar.gz
-            dist/checksums.txt
 
   publish-cloudsmith:
     needs: release
@@ -112,18 +89,12 @@ jobs:
             echo "has_key=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download all artifacts
+      - name: Download artifacts
         if: steps.cs-check.outputs.has_key == 'true'
         uses: actions/download-artifact@v4
         with:
-          path: dist-parts/
-
-      - name: Merge artifacts
-        if: steps.cs-check.outputs.has_key == 'true'
-        run: |
-          mkdir -p dist
-          cp -r dist-parts/dist-amd64/* dist/ || true
-          cp -r dist-parts/dist-arm64/* dist/ || true
+          name: dist
+          path: dist/
 
       - name: Setup Cloudsmith CLI
         if: steps.cs-check.outputs.has_key == 'true'
@@ -154,67 +125,3 @@ jobs:
             [ -f "$f" ] || continue
             cloudsmith push alpine nickheyer/greetdeez/alpine/any-version "$f" --republish
           done
-
-  publish-aur:
-    needs: release
-    runs-on: ubuntu-24.04
-    if: ${{ !contains(github.ref, '-') }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Check for AUR key
-        id: aur-check
-        env:
-          AUR_KEY: ${{ secrets.AUR_KEY }}
-        run: |
-          if [ -z "$AUR_KEY" ]; then
-            echo "has_key=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_key=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download all artifacts
-        if: steps.aur-check.outputs.has_key == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          path: dist-parts/
-
-      - name: Merge artifacts
-        if: steps.aur-check.outputs.has_key == 'true'
-        run: |
-          mkdir -p dist
-          cp -r dist-parts/dist-amd64/* dist/ || true
-          # Merge artifacts.json from both arches before copying arm64 files
-          if [ -f dist/artifacts.json ] && [ -f dist-parts/dist-arm64/artifacts.json ]; then
-            jq -s 'add | unique_by(.name)' \
-              dist/artifacts.json \
-              dist-parts/dist-arm64/artifacts.json \
-              > dist/artifacts.merged.json
-            mv dist/artifacts.merged.json dist/artifacts.json
-          fi
-          cp -rn dist-parts/dist-arm64/* dist/ || true
-
-      - uses: actions/setup-go@v5
-        if: steps.aur-check.outputs.has_key == 'true'
-        with:
-          go-version: "1.25"
-
-      - name: Install GoReleaser
-        if: steps.aur-check.outputs.has_key == 'true'
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          install-only: true
-
-      - name: Setup SSH for AUR
-        if: steps.aur-check.outputs.has_key == 'true'
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-
-      - name: Publish to AUR
-        if: steps.aur-check.outputs.has_key == 'true'
-        env:
-          AUR_KEY: ${{ secrets.AUR_KEY }}
-        run: goreleaser release --skip=build,validate,publish
