@@ -56,10 +56,7 @@ jobs:
         run: cd ui/greetdeez && npm ci && npm run build
 
       - name: Build and package
-        env:
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
-        run: goreleaser release --skip=publish --clean
+        run: goreleaser release --split --skip=publish --clean
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
