@@ -10,6 +10,10 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/goreleaser/goreleaser-cross:v1.25
+      env:
+        CGO_ENABLED: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,93 +22,43 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: ui/greetdeez/package-lock.json
 
       - name: Build UI
         run: cd ui/greetdeez && npm ci && npm run build
 
-      - name: Setup SSH for AUR
+      - name: Install cross-compile deps
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          apt-get install -yqq libwebkit2gtk-4.1-dev
+          dpkg --add-architecture arm64 && apt-get update -qq
+          apt-get install -yqq libwebkit2gtk-4.1-0:arm64
+          mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig
+          for pc in /usr/lib/x86_64-linux-gnu/pkgconfig/*.pc; do
+            sed 's|x86_64-linux-gnu|aarch64-linux-gnu|g' "$pc" \
+              > "/usr/lib/aarch64-linux-gnu/pkgconfig/$(basename "$pc")"
+          done
+          cd /usr/lib/aarch64-linux-gnu && for f in *.so.[0-9]*; do
+            base="${f%.so.*}.so"; [ ! -e "$base" ] && ln -sf "$f" "$base"
+          done
+          mkdir -p /tmp/pkgconfig
+          printf 'Name: webkit2gtk-4.0\nDescription: compat\nVersion: 2.44.0\nRequires: webkit2gtk-4.1\n' > /tmp/pkgconfig/webkit2gtk-4.0.pc
 
-      - name: GoReleaser
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUR_KEY: ${{ secrets.AUR_KEY }}
+          PKG_CONFIG_PATH: /tmp/pkgconfig
         run: |
-          docker run --rm \
-            --entrypoint bash \
-            -e CGO_ENABLED=1 \
-            -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
-            -e AUR_KEY="${{ secrets.AUR_KEY }}" \
-            -v "$(pwd)":/project \
-            -v "$HOME/.ssh":/root/.ssh:ro \
-            -w /project \
-            ghcr.io/goreleaser/goreleaser-cross:v1.25 \
-            -c '
-              git config --global --add safe.directory /project &&
-              dpkg --add-architecture arm64 &&
-              apt-get update && apt-get install -y libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-dev:arm64 pkg-config &&
-              mkdir -p /tmp/pkgconfig &&
-              printf "Name: webkit2gtk-4.0\nDescription: compat shim\nVersion: 2.44.0\nRequires: webkit2gtk-4.1\n" > /tmp/pkgconfig/webkit2gtk-4.0.pc &&
-              export PKG_CONFIG_PATH=/tmp/pkgconfig &&
-              goreleaser release --clean
-            '
+          mkdir -p ~/.ssh && ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          goreleaser release --clean
 
-      - name: Upload dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-  publish-cloudsmith:
-    needs: release
-    runs-on: ubuntu-24.04
-    if: ${{ !contains(github.ref, '-') }}
-    steps:
-      - name: Check for Cloudsmith key
-        id: cs-check
+      - name: Publish to Cloudsmith
+        if: "!contains(github.ref, '-')"
         env:
           CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
         run: |
-          if [ -z "$CLOUDSMITH_API_KEY" ]; then
-            echo "has_key=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_key=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download dist
-        if: steps.cs-check.outputs.has_key == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Setup Cloudsmith CLI
-        if: steps.cs-check.outputs.has_key == 'true'
-        uses: cloudsmith-io/cloudsmith-cli-action@v2
-        with:
-          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
-
-      - name: Publish deb packages
-        if: steps.cs-check.outputs.has_key == 'true'
-        run: |
-          for f in dist/*.deb; do
-            [ -f "$f" ] || continue
-            cloudsmith push deb nickheyer/greetdeez/any-distro/any-version "$f" --republish
+          [ -z "$CLOUDSMITH_API_KEY" ] && exit 0
+          pip3 install -q --break-system-packages cloudsmith-cli
+          for ext in deb rpm; do
+            for f in dist/*.$ext; do [ -f "$f" ] && cloudsmith push $ext nickheyer/greetdeez/any-distro/any-version "$f" --republish; done
           done
-
-      - name: Publish rpm packages
-        if: steps.cs-check.outputs.has_key == 'true'
-        run: |
-          for f in dist/*.rpm; do
-            [ -f "$f" ] || continue
-            cloudsmith push rpm nickheyer/greetdeez/any-distro/any-version "$f" --republish
-          done
-
-      - name: Publish apk packages
-        if: steps.cs-check.outputs.has_key == 'true'
-        run: |
-          for f in dist/*.apk; do
-            [ -f "$f" ] || continue
-            cloudsmith push alpine nickheyer/greetdeez/alpine/any-version "$f" --republish
-          done
+          for f in dist/*.apk; do [ -f "$f" ] && cloudsmith push alpine nickheyer/greetdeez/alpine/any-version "$f" --republish; done

@@ -1,16 +1,13 @@
 version: 2
 
+project_name: greetdeez
+
 builds:
-  - id: greetdeez
-    main: ./cmd/greetdeez
+  - main: ./cmd/greetdeez
     binary: greetdeez
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - linux
-    goarch:
-      - amd64
-      - arm64
+    env: [CGO_ENABLED=1]
+    goos: [linux]
+    goarch: [amd64, arm64]
     ldflags:
       - -s -w -X main.version={{.Version}}
     overrides:
@@ -25,7 +22,7 @@ builds:
 archives:
   - id: tarball
     formats: [tar.gz]
-    name_template: "greetdeez_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - config/greetd.toml
       - config/greetdeez.conf
@@ -34,18 +31,13 @@ archives:
       - README.md
 
 nfpms:
-  - id: greetdeez
-    package_name: greetdeez
+  - package_name: greetdeez
     vendor: nickheyer
     homepage: https://github.com/nickheyer/greetdeez
     maintainer: Nick Heyer <nick@heyer.app>
     description: Minimal, hackable display manager greeter for greetd
     license: MIT
-    formats:
-      - deb
-      - rpm
-      - archlinux
-      - apk
+    formats: [deb, rpm, archlinux, apk]
     bindir: /usr/bin
     contents:
       - src: config/greetd.toml
@@ -58,46 +50,27 @@ nfpms:
       postinstall: packaging/scripts/post-install.sh
     overrides:
       deb:
-        dependencies:
-          - greetd
-          - libwebkit2gtk-4.1-0
-          - cage
+        dependencies: [greetd, libwebkit2gtk-4.1-0, cage]
       rpm:
-        dependencies:
-          - greetd
-          - webkit2gtk4.1
-          - cage
+        dependencies: [greetd, webkit2gtk4.1, cage]
       archlinux:
-        dependencies:
-          - greetd
-          - webkit2gtk
-          - cage
+        dependencies: [greetd, webkit2gtk, cage]
       apk:
-        dependencies:
-          - greetd
-          - webkit2gtk-4.1
-          - cage
+        dependencies: [greetd, webkit2gtk-4.1, cage]
 
 aurs:
   - name: greetdeez-bin
-    ids:
-      - tarball
+    ids: [tarball]
     homepage: https://github.com/nickheyer/greetdeez
     description: "Minimal, hackable display manager greeter for greetd — Go + Svelte 5 + webkit2gtk"
-    maintainers:
-      - "Nick Heyer <nick@heyer.app>"
+    maintainers: ["Nick Heyer <nick@heyer.app>"]
     license: MIT
     private_key: "{{ .Env.AUR_KEY }}"
     git_url: "ssh://aur@aur.archlinux.org/greetdeez-bin.git"
     skip_upload: '{{ if .Env.AUR_KEY }}auto{{ else }}true{{ end }}'
-    depends:
-      - greetd
-      - webkit2gtk
-      - cage
-    provides:
-      - greetdeez
-    conflicts:
-      - greetdeez
+    depends: [greetd, webkit2gtk, cage]
+    provides: [greetdeez]
+    conflicts: [greetdeez]
     backup:
       - etc/greetd/greetd.toml
       - etc/greetd/greetdeez.conf
@@ -109,8 +82,3 @@ aurs:
 
 checksum:
   name_template: checksums.txt
-
-release:
-  github:
-    owner: nickheyer
-    name: greetdeez
