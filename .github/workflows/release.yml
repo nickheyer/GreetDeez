@@ -96,6 +96,65 @@ jobs:
             dist/*.tar.gz
             dist/checksums.txt
 
+  publish-cloudsmith:
+    needs: release
+    runs-on: ubuntu-24.04
+    if: ${{ !contains(github.ref, '-') }}
+    steps:
+      - name: Check for Cloudsmith key
+        id: cs-check
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+        run: |
+          if [ -z "$CLOUDSMITH_API_KEY" ]; then
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all artifacts
+        if: steps.cs-check.outputs.has_key == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-parts/
+
+      - name: Merge artifacts
+        if: steps.cs-check.outputs.has_key == 'true'
+        run: |
+          mkdir -p dist
+          cp -r dist-parts/dist-amd64/* dist/ || true
+          cp -r dist-parts/dist-arm64/* dist/ || true
+
+      - name: Setup Cloudsmith CLI
+        if: steps.cs-check.outputs.has_key == 'true'
+        uses: cloudsmith-io/cloudsmith-cli-action@v2
+        with:
+          api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
+
+      - name: Publish deb packages
+        if: steps.cs-check.outputs.has_key == 'true'
+        run: |
+          for f in dist/*.deb; do
+            [ -f "$f" ] || continue
+            cloudsmith push deb nickheyer/greetdeez/any-distro/any-version "$f" --republish
+          done
+
+      - name: Publish rpm packages
+        if: steps.cs-check.outputs.has_key == 'true'
+        run: |
+          for f in dist/*.rpm; do
+            [ -f "$f" ] || continue
+            cloudsmith push rpm nickheyer/greetdeez/any-distro/any-version "$f" --republish
+          done
+
+      - name: Publish apk packages
+        if: steps.cs-check.outputs.has_key == 'true'
+        run: |
+          for f in dist/*.apk; do
+            [ -f "$f" ] || continue
+            cloudsmith push alpine nickheyer/greetdeez/alpine/any-version "$f" --republish
+          done
+
   publish-aur:
     needs: release
     runs-on: ubuntu-24.04
