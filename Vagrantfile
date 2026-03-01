@@ -29,7 +29,7 @@ Vagrant.configure("2") do |config|
       echo 'nameserver 1.1.1.1' > /etc/resolv.conf
       pacman -Sy --noconfirm archlinux-keyring
       pacman -Syu --noconfirm
-      pacman -S --noconfirm --needed sway gnome-session xorg-server plasma-desktop base-devel git
+      pacman -S --noconfirm --needed sway gnome-shell gnome-session xorg-server plasma-desktop konsole foot base-devel git
 
       #{create_test_user}
       su - test -c '
@@ -52,7 +52,7 @@ Vagrant.configure("2") do |config|
     deb.vm.provision "base", type: "shell", inline: <<~SHELL
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install -y curl sway gnome-session plasma-desktop xorg
+      apt-get install -y curl sway gnome-shell gnome-session plasma-desktop konsole foot xorg
 
       #{create_test_user}
     SHELL
@@ -69,7 +69,7 @@ Vagrant.configure("2") do |config|
     fed.vm.hostname = "greetdeez-fedora"
 
     fed.vm.provision "base", type: "shell", inline: <<~SHELL
-      dnf install -y sway gnome-session plasma-desktop @base-x
+      dnf install -y sway gnome-shell gnome-session plasma-desktop konsole foot @base-x
 
       #{create_test_user}
     SHELL
@@ -87,7 +87,7 @@ Vagrant.configure("2") do |config|
 
     alp.vm.provision "base", type: "shell", inline: <<~SHELL
       apk update
-      apk add sway gnome-session plasma-desktop xorg-server
+      apk add sway gnome-shell gnome-session plasma-desktop konsole foot xorg-server
 
       #{create_test_user}
     SHELL
