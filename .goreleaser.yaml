@@ -94,8 +94,8 @@ aurs:
       install -Dm755 packaging/scripts/post-install.sh "${pkgdir}/usr/share/greetdeez/post-install.sh"
       install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/greetdeez-bin/LICENSE"
 
+aur_sources:
   - name: greetdeez-git
-    ids: [tarball]
     homepage: https://github.com/nickheyer/greetdeez
     description: "Minimal, hackable display manager greeter for greetd — Go + Svelte 5 + webkit2gtk"
     maintainers: ["Nick Heyer <nick@heyer.app>"]
@@ -112,12 +112,14 @@ aurs:
       - etc/greetd/greetdeez.conf
     install: packaging/scripts/post-install.sh
     url_template: "https://github.com/nickheyer/GreetDeez/archive/{{ .Tag }}.tar.gz"
-    package: |-
-      cd "${srcdir}/GreetDeez-{{ .Version }}"
+    build: |-
+      cd "${pkgname}_${pkgver}"
       cd ui/greetdeez && npm ci && npm run build && cd ../..
       export CGO_ENABLED=1
       export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
       go build -ldflags "-s -w" -o greetdeez ./cmd/greetdeez
+    package: |-
+      cd "${pkgname}_${pkgver}"
       install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
       install -Dm644 config/greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
       install -Dm644 config/greetdeez.conf "${pkgdir}/etc/greetd/greetdeez.conf"
