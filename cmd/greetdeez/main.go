@@ -69,6 +69,7 @@ func main() {
 		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
 	} else {
 		binds.Fullscreen(w.Window())
+		binds.HardenWebView(w.Widget())
 	}
 
 	bindFunctions(w, client, &cfg, *devMode, logs)

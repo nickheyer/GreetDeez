@@ -10,7 +10,8 @@ Vagrant.configure("2") do |config|
     lv.memory = 4096
     lv.cpus = 2
     lv.graphics_type = "spice"
-    lv.video_type = "virtio"
+    lv.video_type = "qxl"
+    lv.video_vram = 65536
     lv.channel :type => 'spicevmc', :target_name => 'com.redhat.spice.0', :target_type => 'virtio'
     lv.management_network_mode = "none"
   end
