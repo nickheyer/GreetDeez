@@ -15,6 +15,7 @@ import (
 const DefaultConfigPath = "/etc/greetd/greetdeez.conf"
 
 type Config struct {
+	Debug    bool           `toml:"debug"    json:"debug"`
 	Window   WindowConfig   `toml:"window"   json:"window"`
 	Auth     AuthConfig     `toml:"auth"     json:"auth"`
 	Power    PowerConfig    `toml:"power"    json:"power"`
@@ -145,6 +146,9 @@ func applyEnvOverrides(cfg *Config) {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			cfg.Theme.AuroraSpeed = f
 		}
+	}
+	if v := os.Getenv("GREETDEEZ_DEBUG"); v != "" {
+		cfg.Debug = v == "true" || v == "1"
 	}
 }
 

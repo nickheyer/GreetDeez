@@ -22,6 +22,7 @@ import (
 	"github.com/nickheyer/greetdeez/internal/sessions"
 	"github.com/nickheyer/greetdeez/internal/state"
 	"github.com/nickheyer/greetdeez/pkg/binds"
+	"github.com/nickheyer/greetdeez/pkg/logs"
 	"github.com/nickheyer/greetdeez/pkg/webview"
 	uiembed "github.com/nickheyer/greetdeez/ui/greetdeez"
 )
@@ -43,7 +44,7 @@ func main() {
 	configPath := flag.String("config", config.DefaultConfigPath, "Path to config file")
 	flag.Parse()
 
-	initLogger(*devMode)
+	logs := logs.InitLogger(*devMode)
 
 	cfg := loadConfig(*configPath)
 
@@ -70,7 +71,7 @@ func main() {
 		binds.Fullscreen(w.Window())
 	}
 
-	bindFunctions(w, client, &cfg, *devMode)
+	bindFunctions(w, client, &cfg, *devMode, logs)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -93,16 +94,6 @@ func main() {
 	}()
 
 	w.Run()
-}
-
-func initLogger(devMode bool) {
-	level := slog.LevelInfo
-	if devMode {
-		level = slog.LevelDebug
-	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: level,
-	})))
 }
 
 func loadConfig(path string) config.Config {
@@ -147,7 +138,7 @@ func connectGreetd(devMode bool) *greetd.Client {
 	return client
 }
 
-func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config, devMode bool) {
+func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config, devMode bool, logs *logs.LogCapture) {
 	w.Bind("getSessions", func() []sessions.Session {
 		return sessions.List(cfg.Sessions.Dirs)
 	})
@@ -252,6 +243,10 @@ func bindFunctions(w webview.WebView, client *greetd.Client, cfg *config.Config,
 			return result{OK: false, Error: err.Error()}
 		}
 		return result{OK: true}
+	})
+
+	w.Bind("getLogs", func() []string {
+		return logs.Lines()
 	})
 }
 

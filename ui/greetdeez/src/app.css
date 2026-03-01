@@ -161,6 +161,62 @@
 	}
 }
 
+/* ── Debug panel ─────────────────────────────────────────── */
+
+.debug-panel {
+	position: fixed;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	height: 35vh;
+	display: flex;
+	background: oklch(0.1 0.01 270 / 0.95);
+	border-top: 1px solid rgb(255 255 255 / 0.1);
+	font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+	font-size: 11px;
+	z-index: 50;
+}
+
+.debug-pane {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.debug-pane-border {
+	border-left: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.debug-pane-header {
+	padding: 6px 12px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: var(--color-text-muted);
+	background: rgb(255 255 255 / 0.03);
+	border-bottom: 1px solid rgb(255 255 255 / 0.05);
+	flex-shrink: 0;
+}
+
+.debug-pane-content {
+	flex: 1;
+	overflow-y: auto;
+	padding: 8px 12px;
+	margin: 0;
+	color: var(--color-text-muted);
+	line-height: 1.5;
+	white-space: pre;
+	scrollbar-width: thin;
+	scrollbar-color: rgb(255 255 255 / 0.15) transparent;
+}
+
+.debug-log-line {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
 /* ── Base ────────────────────────────────────────────────── */
 
 html, body {

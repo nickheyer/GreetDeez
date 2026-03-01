@@ -112,11 +112,16 @@ func parseDesktopEntry(path, sessType string) (*Session, error) {
 	}
 
 	return &Session{
-		Name:    name,
+		Name:    cleanSessionName(name),
 		Cmd:     parseExecString(execStr),
 		Type:    sessType,
 		Desktop: desktopNames,
 	}, nil
+}
+
+// Strips redundant session-type hints from the display name
+func cleanSessionName(name string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(name, " on Wayland"), " on Xorg")
 }
 
 // parseExecString splits an Exec= value into arguments, respecting

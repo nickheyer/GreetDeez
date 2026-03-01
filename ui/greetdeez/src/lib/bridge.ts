@@ -26,6 +26,7 @@ export interface PowerConfig {
 }
 
 export interface AppConfig {
+	debug: boolean;
 	power: PowerConfig;
 	theme: ThemeConfig;
 }
@@ -61,9 +62,11 @@ const devStubs = {
 		return { ok: true };
 	},
 	getConfig: async (): Promise<AppConfig> => ({
+		debug: false,
 		power: { enabled: true },
 		theme: { accent_color: '', aurora_speed: 1.0 }
 	}),
+	getLogs: async (): Promise<string[]> => ['Development environment detected, logs disabled.'],
 	getLastState: async (): Promise<AppState> => ({
 		last_user: 'demo',
 		last_session: 'Sway'
@@ -83,6 +86,7 @@ declare global {
 	function getConfig(): Promise<AppConfig>;
 	function getLastState(): Promise<AppState>;
 	function saveState(s: AppState): Promise<Result>;
+	function getLogs(): Promise<string[]>;
 }
 
 export const bridge = isWebview
@@ -94,6 +98,7 @@ export const bridge = isWebview
 			powerAction: (action: string) => globalThis.powerAction(action),
 			getConfig: () => globalThis.getConfig(),
 			getLastState: () => globalThis.getLastState(),
-			saveState: (s: AppState) => globalThis.saveState(s)
+			saveState: (s: AppState) => globalThis.saveState(s),
+			getLogs: () => globalThis.getLogs()
 		}
 	: devStubs;

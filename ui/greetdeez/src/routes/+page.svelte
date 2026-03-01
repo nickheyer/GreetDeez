@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { bridge, type Session, type AppConfig } from '$lib/bridge';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { LoaderCircle, Power, RotateCcw, Moon, TriangleAlert } from '@lucide/svelte';
 
 	let username = $state('');
@@ -16,9 +16,11 @@
 	let success = $state(false);
 	let cfg = $state<AppConfig | null>(null);
 	let capsLock = $state(false);
+	let debugLogs = $state<string[]>([]);
 
 	let passwordInput: HTMLInputElement | undefined = $state();
 	let usernameInput: HTMLInputElement | undefined = $state();
+	let logPane: HTMLDivElement | undefined = $state();
 
 	let selectedSession = $derived(sessions[parseInt(selectedSessionIdx)]);
 	let time = $derived(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -67,6 +69,18 @@
 
 		const timer = setInterval(() => (now = new Date()), 1000);
 		return () => clearInterval(timer);
+	});
+
+	$effect(() => {
+		if (!cfg?.debug) return;
+		const poll = async () => {
+			debugLogs = await bridge.getLogs();
+			await tick();
+			if (logPane) logPane.scrollTop = logPane.scrollHeight;
+		};
+		poll();
+		const id = setInterval(poll, 1000);
+		return () => clearInterval(id);
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -137,7 +151,11 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="flex h-full w-full flex-col items-center justify-center gap-12" class:animate-success-fade={success}>
+<div
+	class="flex w-full flex-col items-center justify-center gap-12"
+	class:animate-success-fade={success}
+	style:height={cfg?.debug ? '65vh' : '100%'}
+>
 	<div class="animate-fade-up flex flex-col items-center gap-1 delay-100">
 		<span class="clock-glow text-7xl font-extralight tracking-wide">
 			{time}
@@ -241,7 +259,7 @@
 </div>
 
 {#if powerEnabled}
-	<div class="fixed right-6 bottom-6 flex items-center gap-1">
+	<div class="fixed right-6 flex items-center gap-1" style:bottom={cfg?.debug ? 'calc(35vh + 1.5rem)' : '1.5rem'}>
 		<button
 			onclick={() => handlePower('suspend')}
 			class="power-btn"
@@ -263,5 +281,22 @@
 		>
 			<Power size={18} />
 		</button>
+	</div>
+{/if}
+
+{#if cfg?.debug}
+	<div class="debug-panel">
+		<div class="debug-pane">
+			<div class="debug-pane-header">Config</div>
+			<pre class="debug-pane-content">{JSON.stringify(cfg, null, 2)}</pre>
+		</div>
+		<div class="debug-pane debug-pane-border">
+			<div class="debug-pane-header">Logs ({debugLogs.length})</div>
+			<div class="debug-pane-content" bind:this={logPane}>
+				{#each debugLogs as line}
+					<div class="debug-log-line">{line}</div>
+				{/each}
+			</div>
+		</div>
 	</div>
 {/if}

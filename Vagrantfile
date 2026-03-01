@@ -40,7 +40,7 @@ Vagrant.configure("2") do |config|
     SHELL
 
     arch.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
-      su - test -c 'yay -S --noconfirm greetdeez-bin'
+      su - test -c 'yay -S --noconfirm greetdeez-bin && echo "debug = 1" >> /etc/greetd/config.toml'
     SHELL
   end
 
@@ -60,6 +60,7 @@ Vagrant.configure("2") do |config|
     deb.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.deb.sh' | bash
       apt-get install -y greetdeez
+      echo "debug = 1" >> /etc/greetd/config.toml
     SHELL
   end
 
@@ -77,6 +78,7 @@ Vagrant.configure("2") do |config|
     fed.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.rpm.sh' | bash
       dnf install -y greetdeez
+      echo "debug = 1" >> /etc/greetd/config.toml
     SHELL
   end
 
@@ -95,6 +97,7 @@ Vagrant.configure("2") do |config|
     alp.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.alpine.sh' | bash
       apk add greetdeez
+      echo "debug = 1" >> /etc/greetd/config.toml
     SHELL
   end
 end
