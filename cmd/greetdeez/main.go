@@ -22,8 +22,8 @@ import (
 	"github.com/nickheyer/greetdeez/internal/sessions"
 	"github.com/nickheyer/greetdeez/internal/state"
 	"github.com/nickheyer/greetdeez/pkg/binds"
+	"github.com/nickheyer/greetdeez/pkg/webview"
 	uiembed "github.com/nickheyer/greetdeez/ui/greetdeez"
-	webview "github.com/webview/webview_go"
 )
 
 type result struct {

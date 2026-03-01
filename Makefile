@@ -51,7 +51,7 @@ dev-vm-down:
 
 dev-vm-%: dev-vm-down
 	trap 'vagrant destroy -f' EXIT; \
-	vagrant up $* && virt-viewer -c qemu:///system --wait GreetDeez_$*
+	vagrant up $* && virt-viewer -c qemu:///system --wait --attach GreetDeez_$*
 
 # Package (via goreleaser)
 package: build
