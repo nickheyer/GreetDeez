@@ -28,7 +28,6 @@ archives:
       - config/greetdeez.conf
       - packaging/sysusers.d/greetdeez.conf
       - packaging/tmpfiles.d/greetdeez.conf
-      - packaging/aur/greetdeez.install
       - packaging/scripts/post-install.sh
       - LICENSE
       - README.md
@@ -65,7 +64,7 @@ nfpms:
       rpm:
         dependencies: [greetd, webkit2gtk4.1, cage]
       archlinux:
-        dependencies: [greetd, webkit2gtk, cage]
+        dependencies: [greetd, webkit2gtk-4.1, cage]
       apk:
         dependencies: [greetd, webkit2gtk-4.1, cage]
 
@@ -79,13 +78,13 @@ aurs:
     private_key: "{{ .Env.AUR_KEY }}"
     git_url: "ssh://aur@aur.archlinux.org/greetdeez-bin.git"
     skip_upload: '{{ if .Env.AUR_KEY }}auto{{ else }}true{{ end }}'
-    depends: [greetd, webkit2gtk, cage]
+    depends: [greetd, webkit2gtk-4.1, cage]
     provides: [greetdeez]
     conflicts: [greetdeez]
     backup:
       - etc/greetd/greetd.toml
       - etc/greetd/greetdeez.conf
-    install: packaging/aur/greetdeez.install
+    install: packaging/scripts/post-install.sh
     package: |-
       install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
       install -Dm644 config/greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
@@ -94,6 +93,38 @@ aurs:
       install -Dm644 packaging/tmpfiles.d/greetdeez.conf "${pkgdir}/usr/lib/tmpfiles.d/greetdeez.conf"
       install -Dm755 packaging/scripts/post-install.sh "${pkgdir}/usr/share/greetdeez/post-install.sh"
       install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/greetdeez-bin/LICENSE"
+
+  - name: greetdeez-git
+    ids: [tarball]
+    homepage: https://github.com/nickheyer/greetdeez
+    description: "Minimal, hackable display manager greeter for greetd — Go + Svelte 5 + webkit2gtk"
+    maintainers: ["Nick Heyer <nick@heyer.app>"]
+    license: MIT
+    private_key: "{{ .Env.AUR_KEY }}"
+    git_url: "ssh://aur@aur.archlinux.org/greetdeez-git.git"
+    skip_upload: '{{ if .Env.AUR_KEY }}auto{{ else }}true{{ end }}'
+    depends: [greetd, webkit2gtk-4.1, cage]
+    makedepends: [go, nodejs, npm, git]
+    provides: [greetdeez]
+    conflicts: [greetdeez, greetdeez-bin]
+    backup:
+      - etc/greetd/greetd.toml
+      - etc/greetd/greetdeez.conf
+    install: packaging/scripts/post-install.sh
+    url_template: "https://github.com/nickheyer/GreetDeez/archive/{{ .Tag }}.tar.gz"
+    package: |-
+      cd "${srcdir}/GreetDeez-{{ .Version }}"
+      cd ui/greetdeez && npm ci && npm run build && cd ../..
+      export CGO_ENABLED=1
+      export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
+      go build -ldflags "-s -w" -o greetdeez ./cmd/greetdeez
+      install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
+      install -Dm644 config/greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
+      install -Dm644 config/greetdeez.conf "${pkgdir}/etc/greetd/greetdeez.conf"
+      install -Dm644 packaging/sysusers.d/greetdeez.conf "${pkgdir}/usr/lib/sysusers.d/greetdeez.conf"
+      install -Dm644 packaging/tmpfiles.d/greetdeez.conf "${pkgdir}/usr/lib/tmpfiles.d/greetdeez.conf"
+      install -Dm755 packaging/scripts/post-install.sh "${pkgdir}/usr/share/greetdeez/post-install.sh"
+      install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/greetdeez-git/LICENSE"
 
 checksum:
   name_template: checksums.txt

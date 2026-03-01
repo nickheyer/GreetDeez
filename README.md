@@ -45,7 +45,7 @@ sudo apk add greetdeez
 
 ### From source
 
-Requires: Go 1.25+, Node.js 20+, `libwebkit2gtk-4.1-dev`, `pkg-config`
+Requires: Go 1.26+, Node.js 20+, `libwebkit2gtk-4.1-dev`, `pkg-config`
 
 Runtime dependencies: `greetd`, `cage`, `webkit2gtk-4.1`
 
