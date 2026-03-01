@@ -33,3 +33,4 @@ Thumbs.db
 *.env
 .env.*
 !.env.example
+repomix*
