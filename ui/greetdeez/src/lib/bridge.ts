@@ -1,7 +1,7 @@
 export interface Session {
 	name: string;
 	cmd: string[];
-	type: 'wayland' | 'x11';
+	type: string;
 	desktop: string;
 }
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -41,6 +42,18 @@ func List(dirs []config.SessionDir) []Session {
 			out = append(out, *s)
 		}
 	}
+
+	// Deduplicate: if two sessions share the same name+type, keep only the first.
+	seen := make(map[[2]string]bool)
+	deduped := out[:0]
+	for _, s := range out {
+		key := [2]string{s.Name, s.Type}
+		if !seen[key] {
+			seen[key] = true
+			deduped = append(deduped, s)
+		}
+	}
+	out = deduped
 
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Type != out[j].Type {
@@ -119,9 +132,16 @@ func parseDesktopEntry(path, sessType string) (*Session, error) {
 	}, nil
 }
 
-// Strips redundant session-type hints from the display name
+// This is absolute SLOP
+// parenHintRe matches parenthesized compositor/protocol hints like
+// "(Wayland)", "(X11)", "(Xorg)", "(X.Org)", case-insensitive.
+var parenHintRe = regexp.MustCompile(`(?i)\s*\((wayland|x11|xorg|x\.org)\)\s*$`)
+
+// Strips redundant session-type hints from the display name.
 func cleanSessionName(name string) string {
-	return strings.TrimSuffix(strings.TrimSuffix(name, " on Wayland"), " on Xorg")
+	name = strings.TrimSuffix(strings.TrimSuffix(name, " on Wayland"), " on Xorg")
+	name = parenHintRe.ReplaceAllString(name, "")
+	return strings.TrimSpace(name)
 }
 
 // parseExecString splits an Exec= value into arguments, respecting

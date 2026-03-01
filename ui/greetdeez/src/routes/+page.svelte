@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { bridge, type Session, type AppConfig } from '$lib/bridge';
 	import { onMount, tick } from 'svelte';
-	import { LoaderCircle, Power, RotateCcw, Moon, TriangleAlert } from '@lucide/svelte';
+	import { LoaderCircle, Power, RotateCcw, Moon, TriangleAlert, ChevronDown } from '@lucide/svelte';
 
 	let username = $state('');
 	let password = $state('');
 	let sessions = $state<Session[]>([]);
-	let selectedSessionIdx = $state('0');
+	let selectedName = $state('');
+	let selectedType = $state('');
 	let errorMsg = $state('');
 	let pamMessages = $state<string[]>([]);
 	let status = $state<'idle' | 'authenticating' | 'starting' | 'cooldown'>('idle');
@@ -23,6 +24,8 @@
 	let logPane: HTMLDivElement | undefined = $state();
 	let debugPanelHeight = $state(35);
 	let dragging = $state(false);
+	let nameDropOpen = $state(false);
+	let typeDropOpen = $state(false);
 
 	function onDragStart(e: PointerEvent) {
 		dragging = true;
@@ -44,7 +47,13 @@
 		window.addEventListener('pointerup', onUp);
 	}
 
-	let selectedSession = $derived(sessions[parseInt(selectedSessionIdx)]);
+	let uniqueNames = $derived([...new Set(sessions.map((s) => s.name))]);
+	let availableTypes = $derived(
+		sessions.filter((s) => s.name === selectedName).map((s) => s.type)
+	);
+	let selectedSession = $derived(
+		sessions.find((s) => s.name === selectedName && s.type === selectedType)
+	);
 	let time = $derived(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 	let date = $derived(
 		now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
@@ -56,15 +65,22 @@
 		bridge.getSessions().then((s) => {
 			sessions = s;
 
+			// Default to first session
+			if (s.length > 0) {
+				selectedName = s[0].name;
+				selectedType = s[0].type;
+			}
+
 			// Restore last session after sessions are loaded
 			bridge.getLastState().then((st) => {
 				if (st.last_user) {
 					username = st.last_user;
 				}
 				if (st.last_session && s.length > 0) {
-					const idx = s.findIndex((sess) => sess.name === st.last_session);
-					if (idx >= 0) {
-						selectedSessionIdx = String(idx);
+					const match = s.find((sess) => sess.name === st.last_session);
+					if (match) {
+						selectedName = match.name;
+						selectedType = match.type;
 					}
 				}
 				// Focus the right field based on whether we restored a username
@@ -256,24 +272,69 @@
 
 		{#if sessions.length > 0}
 			<div class="flex w-full items-center justify-center gap-2 pt-1">
-				<select
-					bind:value={selectedSessionIdx}
-					class="cursor-pointer appearance-none rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-text-muted outline-none transition-colors hover:border-white/20 hover:text-text"
-				>
-					{#each sessions as session, i}
-						<option value={String(i)} class="bg-bg text-text">
-							{session.name} ({session.type})
-						</option>
-					{/each}
-				</select>
-				{#if selectedSession}
+				{#if uniqueNames.length === 1}
+					<span class="session-badge session-badge-name">{selectedName}</span>
+				{:else}
+					<div class="session-dropdown">
+						<button
+							type="button"
+							class="session-dropdown-trigger"
+							onclick={() => { nameDropOpen = !nameDropOpen; typeDropOpen = false; }}
+						>
+							{selectedName}
+							<ChevronDown size={12} class="session-dropdown-chevron" />
+						</button>
+						{#if nameDropOpen}
+							<div class="session-dropdown-backdrop" onclick={() => (nameDropOpen = false)}></div>
+							<div class="session-dropdown-menu">
+								{#each uniqueNames as name}
+									<button
+										type="button"
+										class="session-dropdown-item"
+										class:session-dropdown-item-active={name === selectedName}
+										onclick={() => {
+											selectedName = name;
+											const types = sessions.filter((s) => s.name === name).map((s) => s.type);
+											if (!types.includes(selectedType)) selectedType = types[0];
+											nameDropOpen = false;
+										}}
+									>{name}</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				{#if availableTypes.length === 1}
 					<span
-						class="session-badge rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider"
-						class:session-badge-wayland={selectedSession.type === 'wayland'}
-						class:session-badge-x11={selectedSession.type !== 'wayland'}
-					>
-						{selectedSession.type}
-					</span>
+						class="session-badge"
+						class:session-badge-wayland={selectedType === 'wayland'}
+						class:session-badge-x11={selectedType !== 'wayland'}
+					>{selectedType}</span>
+				{:else if availableTypes.length > 1}
+					<div class="session-dropdown">
+						<button
+							type="button"
+							class="session-dropdown-trigger"
+							onclick={() => { typeDropOpen = !typeDropOpen; nameDropOpen = false; }}
+						>
+							{selectedType}
+							<ChevronDown size={12} class="session-dropdown-chevron" />
+						</button>
+						{#if typeDropOpen}
+							<div class="session-dropdown-backdrop" onclick={() => (typeDropOpen = false)}></div>
+							<div class="session-dropdown-menu">
+								{#each availableTypes as t}
+									<button
+										type="button"
+										class="session-dropdown-item"
+										class:session-dropdown-item-active={t === selectedType}
+										onclick={() => { selectedType = t; typeDropOpen = false; }}
+									>{t}</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				{/if}
 			</div>
 		{/if}
