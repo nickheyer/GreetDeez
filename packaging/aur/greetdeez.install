@@ -1,0 +1,7 @@
+post_install() {
+    /usr/share/greetdeez/post-install.sh
+}
+
+post_upgrade() {
+    /usr/share/greetdeez/post-install.sh
+}

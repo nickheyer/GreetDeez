@@ -84,7 +84,7 @@ aurs:
     backup:
       - etc/greetd/greetd.toml
       - etc/greetd/greetdeez.conf
-    install: packaging/scripts/post-install.sh
+    install: packaging/aur/greetdeez.install
     package: |-
       install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
       install -Dm644 config/greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
