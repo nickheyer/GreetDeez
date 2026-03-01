@@ -21,6 +21,28 @@
 	let passwordInput: HTMLInputElement | undefined = $state();
 	let usernameInput: HTMLInputElement | undefined = $state();
 	let logPane: HTMLDivElement | undefined = $state();
+	let debugPanelHeight = $state(35);
+	let dragging = $state(false);
+
+	function onDragStart(e: PointerEvent) {
+		dragging = true;
+		const startY = e.clientY;
+		const startH = debugPanelHeight;
+		const vh = window.innerHeight;
+		(e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+		function onMove(ev: PointerEvent) {
+			const delta = startY - ev.clientY;
+			debugPanelHeight = Math.min(80, Math.max(10, startH + (delta / vh) * 100));
+		}
+		function onUp() {
+			dragging = false;
+			window.removeEventListener('pointermove', onMove);
+			window.removeEventListener('pointerup', onUp);
+		}
+		window.addEventListener('pointermove', onMove);
+		window.addEventListener('pointerup', onUp);
+	}
 
 	let selectedSession = $derived(sessions[parseInt(selectedSessionIdx)]);
 	let time = $derived(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
@@ -154,7 +176,7 @@
 <div
 	class="flex w-full flex-col items-center justify-center gap-12"
 	class:animate-success-fade={success}
-	style:height={cfg?.debug ? '65vh' : '100%'}
+	style:height={cfg?.debug ? `${100 - debugPanelHeight}vh` : '100%'}
 >
 	<div class="animate-fade-up flex flex-col items-center gap-1 delay-100">
 		<span class="clock-glow text-7xl font-extralight tracking-wide">
@@ -259,7 +281,7 @@
 </div>
 
 {#if powerEnabled}
-	<div class="fixed right-6 flex items-center gap-1" style:bottom={cfg?.debug ? 'calc(35vh + 1.5rem)' : '1.5rem'}>
+	<div class="fixed right-6 flex items-center gap-1" style:bottom={cfg?.debug ? `calc(${debugPanelHeight}vh + 1.5rem)` : '1.5rem'}>
 		<button
 			onclick={() => handlePower('suspend')}
 			class="power-btn"
@@ -285,17 +307,23 @@
 {/if}
 
 {#if cfg?.debug}
-	<div class="debug-panel">
-		<div class="debug-pane">
-			<div class="debug-pane-header">Config</div>
-			<pre class="debug-pane-content">{JSON.stringify(cfg, null, 2)}</pre>
+	<div class="debug-panel" style:height={`${debugPanelHeight}vh`}>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="debug-drag-handle" class:debug-drag-active={dragging} onpointerdown={onDragStart}>
+			<div class="debug-drag-grip"></div>
 		</div>
-		<div class="debug-pane debug-pane-border">
-			<div class="debug-pane-header">Logs ({debugLogs.length})</div>
-			<div class="debug-pane-content" bind:this={logPane}>
-				{#each debugLogs as line}
-					<div class="debug-log-line">{line}</div>
-				{/each}
+		<div class="debug-panel-body">
+			<div class="debug-pane">
+				<div class="debug-pane-header">Config</div>
+				<pre class="debug-pane-content">{JSON.stringify(cfg, null, 2)}</pre>
+			</div>
+			<div class="debug-pane debug-pane-border">
+				<div class="debug-pane-header">Logs ({debugLogs.length})</div>
+				<div class="debug-pane-content" bind:this={logPane}>
+					{#each debugLogs as line}
+						<div class="debug-log-line">{line}</div>
+					{/each}
+				</div>
 			</div>
 		</div>
 	</div>

@@ -10,7 +10,8 @@ Vagrant.configure("2") do |config|
     lv.memory = 4096
     lv.cpus = 2
     lv.graphics_type = "spice"
-    lv.video_type = "qxl"
+    lv.video_type = "virtio"
+    lv.channel :type => 'spicevmc', :target_name => 'com.redhat.spice.0', :target_type => 'virtio'
     lv.management_network_mode = "none"
   end
 
@@ -29,7 +30,8 @@ Vagrant.configure("2") do |config|
       echo 'nameserver 1.1.1.1' > /etc/resolv.conf
       pacman -Sy --noconfirm archlinux-keyring
       pacman -Syu --noconfirm
-      pacman -S --noconfirm --needed sway gnome-shell gnome-session xorg-server plasma-desktop konsole foot base-devel git
+      pacman -S --noconfirm --needed sway gnome-shell gnome-session xorg-server plasma-desktop konsole foot base-devel git spice-vdagent
+      systemctl enable spice-vdagentd
 
       #{create_test_user}
       su - test -c '
@@ -40,7 +42,8 @@ Vagrant.configure("2") do |config|
     SHELL
 
     arch.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
-      su - test -c 'yay -S --noconfirm greetdeez-bin && echo "debug = 1" >> /etc/greetd/config.toml'
+      su - test -c 'yay -S --noconfirm greetdeez-bin'
+      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 
@@ -52,7 +55,8 @@ Vagrant.configure("2") do |config|
     deb.vm.provision "base", type: "shell", inline: <<~SHELL
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install -y curl sway gnome-shell gnome-session plasma-desktop konsole foot xorg
+      apt-get install -y curl sway gnome-shell gnome-session plasma-desktop konsole foot xorg spice-vdagent
+      systemctl enable spice-vdagentd
 
       #{create_test_user}
     SHELL
@@ -60,7 +64,7 @@ Vagrant.configure("2") do |config|
     deb.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.deb.sh' | bash
       apt-get install -y greetdeez
-      echo "debug = 1" >> /etc/greetd/config.toml
+      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 
@@ -70,7 +74,8 @@ Vagrant.configure("2") do |config|
     fed.vm.hostname = "greetdeez-fedora"
 
     fed.vm.provision "base", type: "shell", inline: <<~SHELL
-      dnf install -y sway gnome-shell gnome-session plasma-desktop konsole foot @base-x
+      dnf install -y sway gnome-shell gnome-session plasma-desktop konsole foot @base-x spice-vdagent
+      systemctl enable spice-vdagentd
 
       #{create_test_user}
     SHELL
@@ -78,7 +83,7 @@ Vagrant.configure("2") do |config|
     fed.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.rpm.sh' | bash
       dnf install -y greetdeez
-      echo "debug = 1" >> /etc/greetd/config.toml
+      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 
@@ -89,7 +94,8 @@ Vagrant.configure("2") do |config|
 
     alp.vm.provision "base", type: "shell", inline: <<~SHELL
       apk update
-      apk add sway gnome-shell gnome-session plasma-desktop konsole foot xorg-server
+      apk add sway gnome-shell gnome-session plasma-desktop konsole foot xorg-server spice-vdagent
+      rc-update add spice-vdagentd default
 
       #{create_test_user}
     SHELL
@@ -97,7 +103,7 @@ Vagrant.configure("2") do |config|
     alp.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.alpine.sh' | bash
       apk add greetdeez
-      echo "debug = 1" >> /etc/greetd/config.toml
+      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 end

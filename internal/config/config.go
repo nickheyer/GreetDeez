@@ -85,7 +85,6 @@ func Load(path string) (Config, error) {
 
 func detectDefaults() Config {
 	w, h := detectDisplaySize()
-	poweroff, reboot, suspend := detectPowerCmds()
 
 	return Config{
 		Window: WindowConfig{
@@ -98,9 +97,9 @@ func detectDefaults() Config {
 		},
 		Power: PowerConfig{
 			Enabled:     true,
-			PoweroffCmd: poweroff,
-			RebootCmd:   reboot,
-			SuspendCmd:  suspend,
+			PoweroffCmd: []string{"shutdown", "-h", "now"},
+			RebootCmd:   []string{"shutdown", "-r", "now"},
+			SuspendCmd:  detectStandbyCmd(),
 		},
 		Sessions: SessionsConfig{
 			Dirs: []SessionDir{
@@ -186,21 +185,16 @@ func parseResolution(s string) (int, int, bool) {
 	return w, h, true
 }
 
-// detectPowerCmds probes the host for the available session/init manager
-// and returns appropriate power commands.
-func detectPowerCmds() (poweroff, reboot, suspend []string) {
-	if hasCmd("loginctl") {
-		return []string{"loginctl", "poweroff"},
-			[]string{"loginctl", "reboot"},
-			[]string{"loginctl", "suspend"}
-	}
+// Probes the host for the available power commands
+func detectStandbyCmd() []string {
+
 	if hasCmd("systemctl") {
-		return []string{"systemctl", "poweroff"},
-			[]string{"systemctl", "reboot"},
-			[]string{"systemctl", "suspend"}
+		return []string{"systemctl", "suspend"}
 	}
-	// Generic POSIX — suspend has no universal equivalent.
-	return []string{"poweroff"}, []string{"reboot"}, nil
+	if hasCmd("loginctl") {
+		return []string{"loginctl", "suspend"}
+	}
+	return nil
 }
 
 func hasCmd(name string) bool {
