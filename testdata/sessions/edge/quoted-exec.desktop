@@ -1,4 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=QuotedExec
-Exec=/usr/bin/session --arg "hello world" --flag

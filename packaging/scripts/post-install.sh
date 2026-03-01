@@ -34,24 +34,11 @@ fi
 
 # --- Enable greetd ---
 if command -v systemctl >/dev/null 2>&1; then
-    # Detect any currently enabled display manager.
-    current_dm=""
     for dm in sddm gdm lightdm lxdm ly emptty; do
-        if systemctl is-enabled "$dm.service" >/dev/null 2>&1; then
-            current_dm="$dm"
-            break
-        fi
+        systemctl disable "$dm.service" >/dev/null 2>&1 || true
     done
 
-    if [ -z "$current_dm" ]; then
-        # Nothing else enabled — safe to auto-enable.
-        systemctl enable greetd.service >/dev/null 2>&1 || true
-        echo "==> Enabled greetd.service (starts on next boot)."
-    elif [ "$current_dm" = "greetd" ] || systemctl is-enabled greetd.service >/dev/null 2>&1; then
-        # greetd already enabled (possibly alongside another DM the user manages).
-        true
-    else
-        echo "==> ${current_dm}.service is currently enabled."
-        echo "    To switch: sudo systemctl disable --now ${current_dm} && sudo systemctl enable greetd"
-    fi
+    systemctl set-default graphical.target >/dev/null 2>&1 || true
+    systemctl enable greetd.service >/dev/null 2>&1 || true
+    echo "==> Enabled greetd.service (starts on next boot)."
 fi
