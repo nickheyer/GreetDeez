@@ -15,8 +15,15 @@ fi
 install -d -m 0750 -o greetdeez -g greetdeez /var/lib/greetdeez 2>/dev/null || true
 
 # --- greetd config ---
-cp /etc/greetd/greetd.toml /etc/greetd/config.toml
-echo "==> Installed greetd config: /etc/greetd/config.toml"
+if [ -f /etc/greetd/config.toml ]; then
+    echo "==> Found existing greetd config for backup: /etc/greetd/config.toml"
+    mv /etc/greetd/config.toml /etc/greetd/config.bak
+    echo "==> Backed up existing greetd config: /etc/greetd/config.bak"
+fi
+
+echo "==> Installing packaged greetd config: /etc/greetd/greetd.toml"
+mv /etc/greetd/greetd.toml /etc/greetd/config.toml
+echo "==> Installed packaged greetd config: /etc/greetd/config.toml"
 
 # --- Enable greetd ---
 if command -v systemctl >/dev/null 2>&1; then
@@ -26,5 +33,14 @@ if command -v systemctl >/dev/null 2>&1; then
 
     systemctl set-default graphical.target >/dev/null 2>&1 || true
     systemctl enable greetd.service >/dev/null 2>&1 || true
-    echo "==> Enabled greetd.service (starts on next boot)."
+    echo "==> Enabled greetd.service"
+    echo "    To start GreetDeez Greeter (via greetd service):"
+    echo ""
+    echo "    Reboot this device"
+    echo "    or run the following:"
+    echo "    sudo systemctl start greetd.service"
+    echo ""
+elif command -v rc-update >/dev/null 2>&1; then
+    rc-update add greetd default >/dev/null 2>&1 || true
+    echo "==> Enabled greetd service (OpenRC)"
 fi

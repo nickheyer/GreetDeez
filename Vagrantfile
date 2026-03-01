@@ -11,7 +11,7 @@ Vagrant.configure("2") do |config|
     lv.cpus = 2
     lv.graphics_type = "spice"
     lv.video_type = "qxl"
-    lv.management_network_mode = "none" 
+    lv.management_network_mode = "none"
   end
 
   create_test_user = <<~SHELL
@@ -25,7 +25,7 @@ Vagrant.configure("2") do |config|
     arch.vm.box = "generic/arch"
     arch.vm.hostname = "greetdeez-arch"
 
-    arch.vm.provision "shell", inline: <<~SHELL
+    arch.vm.provision "base", type: "shell", inline: <<~SHELL
       echo 'nameserver 1.1.1.1' > /etc/resolv.conf
       pacman -Sy --noconfirm archlinux-keyring
       pacman -Syu --noconfirm
@@ -37,7 +37,9 @@ Vagrant.configure("2") do |config|
         cd /tmp/yay
         makepkg -si --noconfirm
       '
+    SHELL
 
+    arch.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       su - test -c 'yay -S --noconfirm greetdeez-bin'
     SHELL
   end
@@ -47,15 +49,17 @@ Vagrant.configure("2") do |config|
     deb.vm.box = "debian/bookworm64"
     deb.vm.hostname = "greetdeez-debian"
 
-    deb.vm.provision "shell", inline: <<~SHELL
+    deb.vm.provision "base", type: "shell", inline: <<~SHELL
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
       apt-get install -y curl sway gnome-session plasma-desktop xorg
 
+      #{create_test_user}
+    SHELL
+
+    deb.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.deb.sh' | bash
       apt-get install -y greetdeez
-
-      #{create_test_user}
     SHELL
   end
 
@@ -64,12 +68,15 @@ Vagrant.configure("2") do |config|
     fed.vm.box = "fedora/41-cloud-base"
     fed.vm.hostname = "greetdeez-fedora"
 
-    fed.vm.provision "shell", inline: <<~SHELL
+    fed.vm.provision "base", type: "shell", inline: <<~SHELL
       dnf install -y sway gnome-session plasma-desktop @base-x
-      curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.rpm.sh' | bash
-      dnf install -y greetdeez
 
       #{create_test_user}
+    SHELL
+
+    fed.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
+      curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.rpm.sh' | bash
+      dnf install -y greetdeez
     SHELL
   end
 
@@ -78,14 +85,16 @@ Vagrant.configure("2") do |config|
     alp.vm.box = "generic/alpine319"
     alp.vm.hostname = "greetdeez-alpine"
 
-    alp.vm.provision "shell", inline: <<~SHELL
+    alp.vm.provision "base", type: "shell", inline: <<~SHELL
       apk update
       apk add sway gnome-session plasma-desktop xorg-server
 
+      #{create_test_user}
+    SHELL
+
+    alp.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.alpine.sh' | bash
       apk add greetdeez
-
-      #{create_test_user}
     SHELL
   end
 end

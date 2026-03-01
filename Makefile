@@ -43,15 +43,22 @@ clean:
 	rm -rf ui/greetdeez/build ui/greetdeez/.svelte-kit
 	rm -rf dist/
 
-# Dev
+# Dev VMs
 dev-vm: dev-vm-arch
 
 dev-vm-down:
 	vagrant destroy -f
 
-dev-vm-%: dev-vm-down
-	trap 'vagrant destroy -f' EXIT; \
-	vagrant up $* && virt-viewer -c qemu:///system --wait --attach GreetDeez_$*
+dev-vm-%:
+	@if ! vagrant snapshot list $* 2>/dev/null | grep -q 'base'; then \
+		vagrant up $* --provision-with base && \
+		vagrant snapshot save $* base && \
+		vagrant halt $*; \
+	fi
+	trap 'vagrant halt $*' EXIT; \
+	vagrant snapshot restore $* base && \
+	vagrant provision $* --provision-with package && \
+	virt-viewer -c qemu:///system --wait --attach GreetDeez_$*
 
 # Package (via goreleaser)
 package: build
