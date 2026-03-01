@@ -11,7 +11,7 @@ Vagrant.configure("2") do |config|
     lv.cpus = 2
     lv.graphics_type = "spice"
     lv.video_type = "qxl"
-    lv.video_vram = 65536
+    lv.video_vram = 262144
     lv.channel :type => 'spicevmc', :target_name => 'com.redhat.spice.0', :target_type => 'virtio'
     lv.management_network_mode = "none"
   end
@@ -44,7 +44,7 @@ Vagrant.configure("2") do |config|
 
     arch.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       su - test -c 'yay -S --noconfirm greetdeez-bin'
-      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
+      #echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 
@@ -65,7 +65,7 @@ Vagrant.configure("2") do |config|
     deb.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.deb.sh' | bash
       apt-get install -y greetdeez
-      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
+      #echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 
@@ -84,7 +84,7 @@ Vagrant.configure("2") do |config|
     fed.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.rpm.sh' | bash
       dnf install -y greetdeez
-      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
+      #echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 
@@ -104,7 +104,7 @@ Vagrant.configure("2") do |config|
     alp.vm.provision "package", type: "shell", run: "never", reboot: true, inline: <<~SHELL
       curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.alpine.sh' | bash
       apk add greetdeez
-      echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
+      #echo 'GREETDEEZ_DEBUG=1' >> /etc/environment
     SHELL
   end
 end
