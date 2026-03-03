@@ -1,0 +1,26 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/nickheyer/greetdeez/gen/go
+plugins:
+  # Go message types (standard)
+  - local: protoc-gen-go
+    out: gen/go
+    opt: paths=source_relative
+
+  # Go server interface + dispatcher (custom)
+  - local: protoc-gen-greetdeez-go
+    out: gen/go
+    opt: paths=source_relative
+
+  # ES module types from protoc-gen-es (internal, used by our client)
+  - local: protoc-gen-es
+    out: npm/proto/src/gen
+    opt: target=ts
+
+  # TypeScript client + types (custom)
+  - local: protoc-gen-greetdeez-es
+    out: npm/proto/src/gen
+    opt: target=ts

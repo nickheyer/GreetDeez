@@ -1,5 +1,13 @@
 <script lang="ts">
-	import { bridge, type Session, type AppConfig } from '$lib/bridge';
+	import { client } from '$lib/client';
+	import {
+		AuthOutcome,
+		AuthMessageType,
+		SessionType,
+		PowerAction,
+		type Session,
+		type PowerCapabilities,
+	} from '@greetdeez/proto';
 	import { onMount, tick } from 'svelte';
 	import { LoaderCircle, Power, RotateCcw, Moon, TriangleAlert, ChevronDown } from '@lucide/svelte';
 
@@ -7,7 +15,7 @@
 	let password = $state('');
 	let sessions = $state<Session[]>([]);
 	let selectedName = $state('');
-	let selectedType = $state('');
+	let selectedType = $state<SessionType>(SessionType.UNSPECIFIED);
 	let errorMsg = $state('');
 	let pamMessages = $state<string[]>([]);
 	let status = $state<'idle' | 'authenticating' | 'starting' | 'cooldown'>('idle');
@@ -15,9 +23,10 @@
 	let now = $state(new Date());
 	let shaking = $state(false);
 	let success = $state(false);
-	let cfg = $state<AppConfig | null>(null);
 	let capsLock = $state(false);
+	let debugMode = $state(false);
 	let debugLogs = $state<string[]>([]);
+	let powerCaps = $state<PowerCapabilities | null>(null);
 
 	let passwordInput: HTMLInputElement | undefined = $state();
 	let usernameInput: HTMLInputElement | undefined = $state();
@@ -47,6 +56,14 @@
 		window.addEventListener('pointerup', onUp);
 	}
 
+	function sessionTypeLabel(t: SessionType): string {
+		switch (t) {
+			case SessionType.WAYLAND: return 'wayland';
+			case SessionType.X11: return 'x11';
+			default: return 'unknown';
+		}
+	}
+
 	let uniqueNames = $derived([...new Set(sessions.map((s) => s.name))]);
 	let availableTypes = $derived(
 		sessions.filter((s) => s.name === selectedName).map((s) => s.type)
@@ -58,61 +75,59 @@
 	let date = $derived(
 		now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
 	);
-	let powerEnabled = $derived(cfg?.power?.enabled ?? true);
+	let powerEnabled = $derived(
+		powerCaps != null && (powerCaps.canPoweroff || powerCaps.canReboot || powerCaps.canSuspend)
+	);
 	let formDisabled = $derived(status !== 'idle');
 
 	onMount(() => {
-		bridge.getSessions().then((s) => {
+		debugMode = !window.__greetdeez_rpc__;
+
+		async function init() {
+			const sessResp = await client.listSessions();
+			const s = sessResp.sessions;
 			sessions = s;
 
-			// Default to first session
 			if (s.length > 0) {
 				selectedName = s[0].name;
 				selectedType = s[0].type;
 			}
 
-			// Restore last session after sessions are loaded
-			bridge.getLastState().then((st) => {
-				if (st.last_user) {
-					username = st.last_user;
-				}
-				if (st.last_session && s.length > 0) {
-					const match = s.find((sess) => sess.name === st.last_session);
-					if (match) {
-						selectedName = match.name;
-						selectedType = match.type;
-					}
-				}
-				// Focus the right field based on whether we restored a username
-				if (username) {
-					passwordInput?.focus();
-				} else {
-					usernameInput?.focus();
-				}
-			});
-		});
-		bridge.getHostname().then((h) => (hostname = h));
-		bridge.getConfig().then((c) => {
-			cfg = c;
-			if (c.theme?.accent_color) {
-				document.documentElement.style.setProperty('--color-accent', c.theme.accent_color);
+			const stateResp = await client.getState();
+			const st = stateResp.state;
+			if (st.lastUser) {
+				username = st.lastUser;
 			}
-			if (c.theme?.aurora_speed !== undefined) {
-				document.documentElement.style.setProperty(
-					'--aurora-speed-mult',
-					String(c.theme.aurora_speed)
-				);
+			if (st.lastSession && s.length > 0) {
+				const match = s.find((sess: Session) => sess.name === st.lastSession);
+				if (match) {
+					selectedName = match.name;
+					selectedType = match.type;
+				}
 			}
-		});
+			if (username) {
+				passwordInput?.focus();
+			} else {
+				usernameInput?.focus();
+			}
+
+			const sysResp = await client.getSystemInfo();
+			hostname = sysResp.info.hostname;
+
+			const powerResp = await client.getPowerCapabilities();
+			powerCaps = powerResp.capabilities;
+		}
+		init();
 
 		const timer = setInterval(() => (now = new Date()), 1000);
 		return () => clearInterval(timer);
 	});
 
 	$effect(() => {
-		if (!cfg?.debug) return;
+		if (!debugMode) return;
 		const poll = async () => {
-			debugLogs = await bridge.getLogs();
+			const { lines } = await client.getLogs();
+			debugLogs = lines;
 			await tick();
 			if (logPane) logPane.scrollTop = logPane.scrollHeight;
 		};
@@ -135,55 +150,133 @@
 
 	async function handleLogin(e: SubmitEvent) {
 		e.preventDefault();
-		if (!username || !password || !selectedSession) return;
+		if (!username || !selectedSession) return;
 
 		errorMsg = '';
 		pamMessages = [];
 		status = 'authenticating';
 
-		const authResult = await bridge.login(username, password);
-		if (!authResult.ok) {
-			errorMsg = authResult.error ?? 'Authentication failed';
+		try {
+			// Step 1: Create session
+			let resp = await client.createSession({ username });
+
+			// Step 2: Handle auth message loop
+			while (resp.outcome === AuthOutcome.AUTH_MESSAGE) {
+				if (resp.authMessage?.type === AuthMessageType.SECRET) {
+					// Wait for password to be entered
+					if (!password) {
+						// Focus password input and wait for submit
+						status = 'idle';
+						passwordInput?.focus();
+						return;
+					}
+					const authResp = await client.postAuth({ response: password });
+					resp = {
+						outcome: authResp.outcome,
+						authMessage: authResp.authMessage,
+						success: authResp.success,
+						failure: authResp.failure,
+					};
+				} else if (resp.authMessage?.type === AuthMessageType.VISIBLE) {
+					// Visible prompt — use password field value as response
+					if (!password) {
+						status = 'idle';
+						passwordInput?.focus();
+						return;
+					}
+					const authResp = await client.postAuth({ response: password });
+					resp = {
+						outcome: authResp.outcome,
+						authMessage: authResp.authMessage,
+						success: authResp.success,
+						failure: authResp.failure,
+					};
+				} else if (
+					resp.authMessage?.type === AuthMessageType.INFO ||
+					resp.authMessage?.type === AuthMessageType.ERROR
+				) {
+					// Info/error messages: display and acknowledge
+					if (resp.authMessage.message) {
+						pamMessages = [...pamMessages, resp.authMessage.message];
+					}
+					const authResp = await client.postAuth({});
+					resp = {
+						outcome: authResp.outcome,
+						authMessage: authResp.authMessage,
+						success: authResp.success,
+						failure: authResp.failure,
+					};
+				} else {
+					// Unknown message type, acknowledge
+					const authResp = await client.postAuth({});
+					resp = {
+						outcome: authResp.outcome,
+						authMessage: authResp.authMessage,
+						success: authResp.success,
+						failure: authResp.failure,
+					};
+				}
+			}
+
+			// Step 3: Handle outcome
+			if (resp.outcome === AuthOutcome.FAILURE) {
+				errorMsg = resp.failure?.description || 'Authentication failed';
+				status = 'cooldown';
+				password = '';
+				shaking = true;
+				setTimeout(() => (shaking = false), 500);
+				setTimeout(() => (errorMsg = ''), 4000);
+				setTimeout(() => {
+					status = 'idle';
+					passwordInput?.focus();
+				}, 2000);
+				return;
+			}
+
+			if (resp.outcome !== AuthOutcome.SUCCESS) {
+				errorMsg = 'Unexpected auth response';
+				status = 'idle';
+				return;
+			}
+
+			// Step 4: Start session
+			status = 'starting';
+
+			const startResult = await client.startSession({
+				cmd: [...selectedSession.cmd],
+				type: selectedSession.type,
+				desktop: selectedSession.desktop,
+			});
+			if (!startResult.ok) {
+				errorMsg = startResult.error || 'Failed to start session';
+				status = 'idle';
+				shaking = true;
+				setTimeout(() => (shaking = false), 500);
+				return;
+			}
+
+			// Save state for next login
+			client.saveState({
+				state: { lastUser: username, lastSession: selectedSession.name }
+			});
+
+			success = true;
+		} catch (err) {
+			errorMsg = err instanceof Error ? err.message : 'Login failed';
 			status = 'cooldown';
 			password = '';
 			shaking = true;
 			setTimeout(() => (shaking = false), 500);
 			setTimeout(() => (errorMsg = ''), 4000);
-
-			// Rate limit: 2s cooldown after failed auth
 			setTimeout(() => {
 				status = 'idle';
 				passwordInput?.focus();
 			}, 2000);
-			return;
 		}
-
-		// Collect PAM info messages (MOTD, password expiry, etc.)
-		if (authResult.messages && authResult.messages.length > 0) {
-			pamMessages = authResult.messages;
-		}
-
-		status = 'starting';
-		const startResult = await bridge.startSession(selectedSession);
-		if (!startResult.ok) {
-			errorMsg = startResult.error ?? 'Failed to start session';
-			status = 'idle';
-			shaking = true;
-			setTimeout(() => (shaking = false), 500);
-			return;
-		}
-
-		// Save state for next login
-		bridge.saveState({
-			last_user: username,
-			last_session: selectedSession.name
-		});
-
-		success = true;
 	}
 
-	async function handlePower(action: string) {
-		await bridge.powerAction(action);
+	async function handlePower(action: PowerAction) {
+		await client.executePowerAction({ action });
 	}
 </script>
 
@@ -192,7 +285,7 @@
 <div
 	class="flex w-full flex-col items-center justify-center gap-12"
 	class:animate-success-fade={success}
-	style:height={cfg?.debug ? `${100 - debugPanelHeight}vh` : '100%'}
+	style:height={debugMode ? `${100 - debugPanelHeight}vh` : '100%'}
 >
 	<div class="animate-fade-up flex flex-col items-center gap-1 delay-100">
 		<span class="clock-glow text-7xl font-extralight tracking-wide">
@@ -308,9 +401,9 @@
 				{#if availableTypes.length === 1}
 					<span
 						class="session-badge"
-						class:session-badge-wayland={selectedType === 'wayland'}
-						class:session-badge-x11={selectedType !== 'wayland'}
-					>{selectedType}</span>
+						class:session-badge-wayland={selectedType === SessionType.WAYLAND}
+						class:session-badge-x11={selectedType !== SessionType.WAYLAND}
+					>{sessionTypeLabel(selectedType)}</span>
 				{:else if availableTypes.length > 1}
 					<div class="session-dropdown">
 						<button
@@ -318,7 +411,7 @@
 							class="session-dropdown-trigger"
 							onclick={() => { typeDropOpen = !typeDropOpen; nameDropOpen = false; }}
 						>
-							{selectedType}
+							{sessionTypeLabel(selectedType)}
 							<ChevronDown size={12} class="session-dropdown-chevron" />
 						</button>
 						{#if typeDropOpen}
@@ -330,7 +423,7 @@
 										class="session-dropdown-item"
 										class:session-dropdown-item-active={t === selectedType}
 										onclick={() => { selectedType = t; typeDropOpen = false; }}
-									>{t}</button>
+									>{sessionTypeLabel(t)}</button>
 								{/each}
 							</div>
 						{/if}
@@ -342,32 +435,38 @@
 </div>
 
 {#if powerEnabled}
-	<div class="fixed right-6 flex items-center gap-1" style:bottom={cfg?.debug ? `calc(${debugPanelHeight}vh + 1.5rem)` : '1.5rem'}>
-		<button
-			onclick={() => handlePower('suspend')}
-			class="power-btn"
-			title="Suspend"
-		>
-			<Moon size={18} />
-		</button>
-		<button
-			onclick={() => handlePower('reboot')}
-			class="power-btn"
-			title="Reboot"
-		>
-			<RotateCcw size={18} />
-		</button>
-		<button
-			onclick={() => handlePower('poweroff')}
-			class="power-btn"
-			title="Power Off"
-		>
-			<Power size={18} />
-		</button>
+	<div class="fixed right-6 flex items-center gap-1" style:bottom={debugMode ? `calc(${debugPanelHeight}vh + 1.5rem)` : '1.5rem'}>
+		{#if powerCaps?.canSuspend}
+			<button
+				onclick={() => handlePower(PowerAction.SUSPEND)}
+				class="power-btn"
+				title="Suspend"
+			>
+				<Moon size={18} />
+			</button>
+		{/if}
+		{#if powerCaps?.canReboot}
+			<button
+				onclick={() => handlePower(PowerAction.REBOOT)}
+				class="power-btn"
+				title="Reboot"
+			>
+				<RotateCcw size={18} />
+			</button>
+		{/if}
+		{#if powerCaps?.canPoweroff}
+			<button
+				onclick={() => handlePower(PowerAction.POWEROFF)}
+				class="power-btn"
+				title="Power Off"
+			>
+				<Power size={18} />
+			</button>
+		{/if}
 	</div>
 {/if}
 
-{#if cfg?.debug}
+{#if debugMode}
 	<div class="debug-panel" style:height={`${debugPanelHeight}vh`}>
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="debug-drag-handle" class:debug-drag-active={dragging} onpointerdown={onDragStart}>
@@ -375,8 +474,8 @@
 		</div>
 		<div class="debug-panel-body">
 			<div class="debug-pane">
-				<div class="debug-pane-header">Config</div>
-				<pre class="debug-pane-content">{JSON.stringify(cfg, null, 2)}</pre>
+				<div class="debug-pane-header">Sessions</div>
+				<pre class="debug-pane-content">{JSON.stringify(sessions, null, 2)}</pre>
 			</div>
 			<div class="debug-pane debug-pane-border">
 				<div class="debug-pane-header">Logs ({debugLogs.length})</div>

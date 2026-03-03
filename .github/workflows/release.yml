@@ -23,8 +23,21 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install buf and protoc-gen-es
+        run: npm install -g @bufbuild/buf @bufbuild/protoc-gen-es
+
+      - name: Generate code
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install ./cmd/protoc-gen-greetdeez-go
+          go install ./cmd/protoc-gen-greetdeez-es
+          buf generate
+
+      - name: Build proto package
+        run: cd npm/proto && npm ci && npm run build
+
       - name: Build UI
-        run: cd ui/greetdeez && npm ci && npm run build
+        run: cd ui/default && npm ci && npm run build
 
       - name: Install cross-compile deps
         run: |

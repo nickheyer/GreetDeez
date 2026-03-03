@@ -85,12 +85,6 @@
 }
 
 /* ── Aurora background ───────────────────────────────────── */
-/* Speed is driven by --aurora-speed-mult (set from Go config via JS). */
-
-:root {
-	--aurora-speed-mult: 1;
-}
-
 .aurora {
 	position: absolute;
 	inset: 0;
@@ -102,7 +96,7 @@
 		oklch(0.22 0.10 240),
 		oklch(0.25 0.12 280)
 	);
-	animation: aurora-hue-rotate calc(30s / var(--aurora-speed-mult)) linear infinite;
+	animation: aurora-hue-rotate 30s linear infinite;
 	opacity: 0.6;
 }
 

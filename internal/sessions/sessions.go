@@ -13,10 +13,10 @@ import (
 )
 
 type Session struct {
-	Name    string   `json:"name"`
-	Cmd     []string `json:"cmd"`
-	Type    string   `json:"type"`
-	Desktop string   `json:"desktop"`
+	Name    string
+	Cmd     []string
+	Type    string
+	Desktop string
 }
 
 // List discovers available desktop sessions by parsing .desktop entry files

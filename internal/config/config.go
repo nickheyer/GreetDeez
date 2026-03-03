@@ -15,22 +15,26 @@ import (
 const DefaultConfigPath = "/etc/greetd/greetdeez.conf"
 
 type Config struct {
-	Debug    bool           `toml:"debug"    json:"debug"`
-	Window   WindowConfig   `toml:"window"   json:"window"`
-	Auth     AuthConfig     `toml:"auth"     json:"auth"`
-	Power    PowerConfig    `toml:"power"    json:"power"`
-	Sessions SessionsConfig `toml:"sessions" json:"sessions"`
-	Theme    ThemeConfig    `toml:"theme"    json:"theme"`
+	Debug    bool           `toml:"debug"`
+	Window   WindowConfig   `toml:"window"`
+	Auth     AuthConfig     `toml:"auth"`
+	Power    PowerConfig    `toml:"power"`
+	Sessions SessionsConfig `toml:"sessions"`
+	UI       UIConfig       `toml:"ui"`
+}
+
+type UIConfig struct {
+	Path string `toml:"path"`
 }
 
 type WindowConfig struct {
-	Title  string `toml:"title"  json:"title"`
-	Width  int    `toml:"width"  json:"width"`
-	Height int    `toml:"height" json:"height"`
+	Title  string `toml:"title"`
+	Width  int    `toml:"width"`
+	Height int    `toml:"height"`
 }
 
 type AuthConfig struct {
-	TimeoutSeconds int `toml:"timeout_seconds" json:"timeout_seconds"`
+	TimeoutSeconds int `toml:"timeout_seconds"`
 }
 
 func (a AuthConfig) Timeout() time.Duration {
@@ -38,25 +42,20 @@ func (a AuthConfig) Timeout() time.Duration {
 }
 
 type PowerConfig struct {
-	Enabled     bool     `toml:"enabled"      json:"enabled"`
-	PoweroffCmd []string `toml:"poweroff_cmd" json:"poweroff_cmd"`
-	RebootCmd   []string `toml:"reboot_cmd"   json:"reboot_cmd"`
-	SuspendCmd  []string `toml:"suspend_cmd"  json:"suspend_cmd"`
+	Enabled     bool     `toml:"enabled"`
+	PoweroffCmd []string `toml:"poweroff_cmd"`
+	RebootCmd   []string `toml:"reboot_cmd"`
+	SuspendCmd  []string `toml:"suspend_cmd"`
 }
 
 type SessionDir struct {
-	Path string `toml:"path" json:"path"`
-	Type string `toml:"type" json:"type"`
+	Path string `toml:"path"`
+	Type string `toml:"type"`
 }
 
 type SessionsConfig struct {
-	Dirs       []SessionDir `toml:"dirs"        json:"dirs"`
-	X11Wrapper []string     `toml:"x11_wrapper" json:"x11_wrapper"`
-}
-
-type ThemeConfig struct {
-	AccentColor string  `toml:"accent_color" json:"accent_color"`
-	AuroraSpeed float64 `toml:"aurora_speed"  json:"aurora_speed"`
+	Dirs       []SessionDir `toml:"dirs"`
+	X11Wrapper []string     `toml:"x11_wrapper"`
 }
 
 // Load reads configuration with the following priority (highest wins):
@@ -108,10 +107,6 @@ func detectDefaults() Config {
 			},
 			X11Wrapper: []string{"startx", "/usr/bin/env"},
 		},
-		Theme: ThemeConfig{
-			AccentColor: "",
-			AuroraSpeed: 1.0,
-		},
 	}
 }
 
@@ -138,13 +133,8 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("GREETDEEZ_POWER_ENABLED"); v != "" {
 		cfg.Power.Enabled = v == "true" || v == "1"
 	}
-	if v := os.Getenv("GREETDEEZ_THEME_ACCENT_COLOR"); v != "" {
-		cfg.Theme.AccentColor = v
-	}
-	if v := os.Getenv("GREETDEEZ_THEME_AURORA_SPEED"); v != "" {
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			cfg.Theme.AuroraSpeed = f
-		}
+	if v := os.Getenv("GREETDEEZ_UI_PATH"); v != "" {
+		cfg.UI.Path = v
 	}
 	if v := os.Getenv("GREETDEEZ_DEBUG"); v != "" {
 		cfg.Debug = v == "true" || v == "1"

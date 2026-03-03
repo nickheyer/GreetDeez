@@ -1,0 +1,158 @@
+syntax = "proto3";
+package greetdeez.v1;
+
+option go_package = "github.com/nickheyer/greetdeez/gen/go/greetdeez/v1;greetdeezv1";
+
+// ── greetd auth (mirrors greetd-ipc(7) state machine) ──────────
+
+enum AuthMessageType {
+  AUTH_MESSAGE_TYPE_UNSPECIFIED = 0;
+  AUTH_MESSAGE_TYPE_VISIBLE     = 1;
+  AUTH_MESSAGE_TYPE_SECRET      = 2;
+  AUTH_MESSAGE_TYPE_INFO        = 3;
+  AUTH_MESSAGE_TYPE_ERROR       = 4;
+}
+
+enum ErrorType {
+  ERROR_TYPE_UNSPECIFIED = 0;
+  ERROR_TYPE_AUTH_ERROR  = 1; // Retryable
+  ERROR_TYPE_ERROR       = 2; // Fatal
+}
+
+enum AuthOutcome {
+  AUTH_OUTCOME_UNSPECIFIED    = 0;
+  AUTH_OUTCOME_AUTH_MESSAGE   = 1;
+  AUTH_OUTCOME_SUCCESS        = 2;
+  AUTH_OUTCOME_FAILURE        = 3;
+}
+
+message AuthMessage {
+  AuthMessageType type    = 1;
+  string          message = 2;
+}
+
+message AuthSuccess {}
+
+message AuthFailure {
+  ErrorType error_type  = 1;
+  string    description = 2;
+}
+
+// ── Sessions ────────────────────────────────────────────────────
+
+enum SessionType {
+  SESSION_TYPE_UNSPECIFIED = 0;
+  SESSION_TYPE_WAYLAND     = 1;
+  SESSION_TYPE_X11         = 2;
+}
+
+message Session {
+  string          name    = 1;
+  repeated string cmd     = 2;
+  SessionType     type    = 3;
+  string          desktop = 4;
+}
+
+// ── Power ───────────────────────────────────────────────────────
+
+enum PowerAction {
+  POWER_ACTION_UNSPECIFIED = 0;
+  POWER_ACTION_POWEROFF    = 1;
+  POWER_ACTION_REBOOT      = 2;
+  POWER_ACTION_SUSPEND     = 3;
+}
+
+message PowerCapabilities {
+  bool can_poweroff = 1;
+  bool can_reboot   = 2;
+  bool can_suspend  = 3;
+}
+
+// ── System ──────────────────────────────────────────────────────
+
+message SystemInfo {
+  string hostname = 1;
+}
+
+// ── State ───────────────────────────────────────────────────────
+
+message GreeterState {
+  string last_user    = 1;
+  string last_session = 2;
+}
+
+// ── RPC messages ────────────────────────────────────────────────
+
+message CreateSessionRequest {
+  string username = 1;
+}
+
+message CreateSessionResponse {
+  AuthOutcome  outcome      = 1;
+  AuthMessage  auth_message = 2; // Set when outcome = AUTH_OUTCOME_AUTH_MESSAGE
+  AuthSuccess  success      = 3; // Set when outcome = AUTH_OUTCOME_SUCCESS
+  AuthFailure  failure      = 4; // Set when outcome = AUTH_OUTCOME_FAILURE
+}
+
+message PostAuthRequest {
+  optional string response = 1;
+}
+
+message PostAuthResponse {
+  AuthOutcome  outcome      = 1;
+  AuthMessage  auth_message = 2;
+  AuthSuccess  success      = 3;
+  AuthFailure  failure      = 4;
+}
+
+message StartSessionRequest {
+  repeated string cmd     = 1;
+  SessionType     type    = 2;
+  string          desktop = 3;
+}
+message StartSessionResponse { bool ok = 1; string error = 2; }
+
+message CancelSessionRequest  {}
+message CancelSessionResponse {}
+
+message ListSessionsRequest  {}
+message ListSessionsResponse { repeated Session sessions = 1; }
+
+message GetSystemInfoRequest  {}
+message GetSystemInfoResponse { SystemInfo info = 1; }
+
+message GetPowerCapabilitiesRequest  {}
+message GetPowerCapabilitiesResponse { PowerCapabilities capabilities = 1; }
+
+message ExecutePowerActionRequest  { PowerAction action = 1; }
+message ExecutePowerActionResponse { bool ok = 1; string error = 2; }
+
+message GetStateRequest  {}
+message GetStateResponse { GreeterState state = 1; }
+
+message SaveStateRequest  { GreeterState state = 1; }
+message SaveStateResponse { bool ok = 1; string error = 2; }
+
+message GetLogsRequest  {}
+message GetLogsResponse { repeated string lines = 1; }
+
+// ── Service ─────────────────────────────────────────────────────
+
+service GreeterService {
+  rpc CreateSession(CreateSessionRequest)   returns (CreateSessionResponse);
+  rpc PostAuth(PostAuthRequest)             returns (PostAuthResponse);
+  rpc StartSession(StartSessionRequest)     returns (StartSessionResponse);
+  rpc CancelSession(CancelSessionRequest)   returns (CancelSessionResponse);
+
+  rpc ListSessions(ListSessionsRequest)     returns (ListSessionsResponse);
+
+  rpc GetSystemInfo(GetSystemInfoRequest)   returns (GetSystemInfoResponse);
+
+  rpc GetPowerCapabilities(GetPowerCapabilitiesRequest) returns (GetPowerCapabilitiesResponse);
+  rpc ExecutePowerAction(ExecutePowerActionRequest)     returns (ExecutePowerActionResponse);
+
+  rpc GetState(GetStateRequest)             returns (GetStateResponse);
+  rpc SaveState(SaveStateRequest)           returns (SaveStateResponse);
+
+  rpc GetLogs(GetLogsRequest)               returns (GetLogsResponse);
+}

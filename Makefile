@@ -1,16 +1,23 @@
-.PHONY: build ui dev install uninstall clean package test dev-vm dev-vm-* dev-vm-down
+.PHONY: build gen ui dev install uninstall clean package test dev-vm dev-vm-* dev-vm-down
+
+# Code gen
+gen:
+	go install ./cmd/protoc-gen-greetdeez-go
+	go install ./cmd/protoc-gen-greetdeez-es
+	buf generate
 
 # Build
-build: ui
+build: gen ui
 	@mkdir -p bin
 	CGO_ENABLED=1 go build -o bin/greetdeez ./cmd/greetdeez
 
 ui:
-	cd ui/greetdeez && npm install && npm run build
+	cd npm/proto && npm install && npm run build
+	cd ui/default && npm install && npm run build
 
 # Dev
 dev:
-	cd ui/greetdeez && npm run dev
+	cd ui/default && npm run dev
 
 # Install
 DESTDIR ?=
@@ -40,7 +47,9 @@ test:
 # Clean
 clean:
 	rm -rf bin/
-	rm -rf ui/greetdeez/build ui/greetdeez/.svelte-kit
+	rm -rf ui/default/build ui/default/.svelte-kit
+	rm -rf npm/proto/dist
+	rm -rf gen/
 	rm -rf dist/
 
 # Dev VMs

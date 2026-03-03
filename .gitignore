@@ -1,9 +1,13 @@
 # Binaries
+sandbox/
 bin/
-
+*.pb.*
+*_pb.ts
 junk/
+gen/
 
 # Build artifacts
+node_modules/
 dist/
 *.deb
 *.rpm

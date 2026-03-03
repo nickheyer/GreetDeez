@@ -1,0 +1,14 @@
+syntax = "proto3";
+package transport.v1;
+
+option go_package = "github.com/nickheyer/greetdeez/gen/go/transport/v1;transportv1";
+
+message RpcEnvelope {
+  string method  = 1;
+  bytes  payload = 2;
+}
+
+message RpcResult {
+  bytes  payload = 1;
+  string error   = 2;
+}
