@@ -29,8 +29,8 @@ jobs:
       - name: Generate code
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install ./cmd/protoc-gen-greetdeez-go
-          go install ./cmd/protoc-gen-greetdeez-es
+          go install -buildvcs=false ./cmd/protoc-gen-greetdeez-go
+          go install -buildvcs=false ./cmd/protoc-gen-greetdeez-es
           buf generate
 
       - name: Build proto package
