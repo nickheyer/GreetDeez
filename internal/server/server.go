@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -13,87 +12,99 @@ import (
 	"github.com/nickheyer/greetdeez/internal/greetd"
 	"github.com/nickheyer/greetdeez/internal/sessions"
 	"github.com/nickheyer/greetdeez/internal/state"
-	"github.com/nickheyer/greetdeez/pkg/logs"
 )
 
 type Server struct {
 	pb.UnimplementedGreeterServiceServer
 	client *greetd.Client
 	cfg    *config.Config
-	logs   *logs.LogCapture
 }
 
-func New(client *greetd.Client, cfg *config.Config, logs *logs.LogCapture) *Server {
-	return &Server{client: client, cfg: cfg, logs: logs}
+func New(client *greetd.Client, cfg *config.Config) *Server {
+	return &Server{client: client, cfg: cfg}
 }
 
-func (s *Server) CreateSession(ctx context.Context, req *pb.CreateSessionRequest) (*pb.CreateSessionResponse, error) {
+func (s *Server) Authenticate(ctx context.Context, req *pb.AuthenticateRequest) (*pb.AuthenticateResponse, error) {
 	if s.client == nil {
-		slog.Debug("dev: createSession", "username", req.Username)
-		return &pb.CreateSessionResponse{Outcome: pb.AuthOutcome_AUTH_OUTCOME_SUCCESS}, nil
+		slog.Debug("dev: authenticate", "username", req.Username)
+		return &pb.AuthenticateResponse{Success: true}, nil
 	}
 
-	// Cancel any stale session first
-	s.client.CancelSession(ctx)
-
-	resp, err := s.client.CreateSession(ctx, req.Username)
+	_, err := s.client.Authenticate(ctx, req.Username, req.Password)
 	if err != nil {
-		return nil, fmt.Errorf("create_session: %w", err)
+		return &pb.AuthenticateResponse{Success: false, Error: err.Error()}, nil
 	}
-	return mapGreetdResponse(resp), nil
-}
-
-func (s *Server) PostAuth(ctx context.Context, req *pb.PostAuthRequest) (*pb.PostAuthResponse, error) {
-	if s.client == nil {
-		slog.Debug("dev: postAuth")
-		return &pb.PostAuthResponse{Outcome: pb.AuthOutcome_AUTH_OUTCOME_SUCCESS}, nil
-	}
-
-	var response *string
-	if req.Response != nil {
-		response = req.Response
-	}
-
-	resp, err := s.client.PostAuthResponse(ctx, response)
-	if err != nil {
-		return nil, fmt.Errorf("post_auth: %w", err)
-	}
-
-	out := mapGreetdResponse(resp)
-	return &pb.PostAuthResponse{
-		Outcome:     out.Outcome,
-		AuthMessage: out.AuthMessage,
-		Success:     out.Success,
-		Failure:     out.Failure,
-	}, nil
+	return &pb.AuthenticateResponse{Success: true}, nil
 }
 
 func (s *Server) StartSession(ctx context.Context, req *pb.StartSessionRequest) (*pb.StartSessionResponse, error) {
-	cmd := req.Cmd
-	env := buildSessionEnv(req.Type, req.Desktop)
+	sess := req.Session
+	if sess == nil {
+		return &pb.StartSessionResponse{Success: false, Error: "session is required"}, nil
+	}
 
-	// Wrap X11 sessions with the configured wrapper command.
-	if req.Type == pb.SessionType_SESSION_TYPE_X11 && len(s.cfg.Sessions.X11Wrapper) > 0 {
+	cmd := sess.Cmd
+	env := buildSessionEnv(sess.Type, sess.Desktop)
+
+	if sess.Type == pb.SessionType_SESSION_TYPE_X11 && len(s.cfg.Sessions.X11Wrapper) > 0 {
 		cmd = append(append([]string{}, s.cfg.Sessions.X11Wrapper...), cmd...)
 	}
 
 	if s.client == nil {
 		slog.Debug("dev: startSession (no-op)", "cmd", cmd, "env", env)
-		return &pb.StartSessionResponse{Ok: true}, nil
+		return &pb.StartSessionResponse{Success: true}, nil
 	}
 
 	resp, err := s.client.StartSession(ctx, cmd, env)
 	if err != nil {
 		slog.Error("session start failed", "cmd", cmd, "error", err)
-		return &pb.StartSessionResponse{Ok: false, Error: err.Error()}, nil
+		return &pb.StartSessionResponse{Success: false, Error: err.Error()}, nil
 	}
 	if resp.Type != "success" {
 		slog.Error("session start rejected", "cmd", cmd, "type", resp.Type)
-		return &pb.StartSessionResponse{Ok: false, Error: "session start failed"}, nil
+		return &pb.StartSessionResponse{Success: false, Error: "session start failed"}, nil
 	}
 
 	slog.Info("session started", "cmd", cmd, "env", env)
-	return &pb.StartSessionResponse{Ok: true}, nil
+	return &pb.StartSessionResponse{Success: true}, nil
+}
+
+func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
+	if s.client == nil {
+		slog.Debug("dev: login", "username", req.Username)
+		if req.Session != nil {
+			state.Save(state.State{
+				LastUser:    req.Username,
+				LastSession: req.Session.Name,
+			})
+		}
+		return &pb.LoginResponse{Success: true}, nil
+	}
+
+	// Step 1: Authenticate
+	_, err := s.client.Authenticate(ctx, req.Username, req.Password)
+	if err != nil {
+		return &pb.LoginResponse{Success: false, Error: err.Error()}, nil
+	}
+
+	// Step 2: Start session
+	startResp, err := s.StartSession(ctx, &pb.StartSessionRequest{Session: req.Session})
+	if err != nil {
+		return &pb.LoginResponse{Success: false, Error: err.Error()}, nil
+	}
+	if !startResp.Success {
+		return &pb.LoginResponse{Success: false, Error: startResp.Error}, nil
+	}
+
+	// Save state on success
+	if req.Session != nil {
+		state.Save(state.State{
+			LastUser:    req.Username,
+			LastSession: req.Session.Name,
+		})
+	}
+
+	return &pb.LoginResponse{Success: true}, nil
 }
 
 func buildSessionEnv(sessType pb.SessionType, desktop string) []string {
@@ -115,18 +126,6 @@ func buildSessionEnv(sessType pb.SessionType, desktop string) []string {
 		"DESKTOP_SESSION="+d,
 	)
 	return env
-}
-
-func (s *Server) CancelSession(ctx context.Context, _ *pb.CancelSessionRequest) (*pb.CancelSessionResponse, error) {
-	if s.client == nil {
-		slog.Debug("dev: cancelSession (no-op)")
-		return &pb.CancelSessionResponse{}, nil
-	}
-	_, err := s.client.CancelSession(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("cancel_session: %w", err)
-	}
-	return &pb.CancelSessionResponse{}, nil
 }
 
 func (s *Server) ListSessions(_ context.Context, _ *pb.ListSessionsRequest) (*pb.ListSessionsResponse, error) {
@@ -209,73 +208,6 @@ func (s *Server) SaveState(_ context.Context, req *pb.SaveStateRequest) (*pb.Sav
 		return &pb.SaveStateResponse{Ok: false, Error: err.Error()}, nil
 	}
 	return &pb.SaveStateResponse{Ok: true}, nil
-}
-
-func (s *Server) GetLogs(_ context.Context, _ *pb.GetLogsRequest) (*pb.GetLogsResponse, error) {
-	return &pb.GetLogsResponse{Lines: s.logs.Lines()}, nil
-}
-
-// mapGreetdResponse maps a greetd IPC response to a proto CreateSessionResponse.
-func mapGreetdResponse(resp *greetd.Response) *pb.CreateSessionResponse {
-	switch resp.Type {
-	case "auth_message":
-		msgType := pb.AuthMessageType_AUTH_MESSAGE_TYPE_UNSPECIFIED
-		if resp.AuthMessageType != nil {
-			switch *resp.AuthMessageType {
-			case "visible":
-				msgType = pb.AuthMessageType_AUTH_MESSAGE_TYPE_VISIBLE
-			case "secret":
-				msgType = pb.AuthMessageType_AUTH_MESSAGE_TYPE_SECRET
-			case "info":
-				msgType = pb.AuthMessageType_AUTH_MESSAGE_TYPE_INFO
-			case "error":
-				msgType = pb.AuthMessageType_AUTH_MESSAGE_TYPE_ERROR
-			}
-		}
-		msg := ""
-		if resp.AuthMessage != nil {
-			msg = *resp.AuthMessage
-		}
-		return &pb.CreateSessionResponse{
-			Outcome: pb.AuthOutcome_AUTH_OUTCOME_AUTH_MESSAGE,
-			AuthMessage: &pb.AuthMessage{
-				Type:    msgType,
-				Message: msg,
-			},
-		}
-
-	case "success":
-		return &pb.CreateSessionResponse{
-			Outcome: pb.AuthOutcome_AUTH_OUTCOME_SUCCESS,
-			Success: &pb.AuthSuccess{},
-		}
-
-	case "error":
-		errType := pb.ErrorType_ERROR_TYPE_ERROR
-		if resp.ErrorType != nil && *resp.ErrorType == "auth_error" {
-			errType = pb.ErrorType_ERROR_TYPE_AUTH_ERROR
-		}
-		desc := ""
-		if resp.Description != nil {
-			desc = *resp.Description
-		}
-		return &pb.CreateSessionResponse{
-			Outcome: pb.AuthOutcome_AUTH_OUTCOME_FAILURE,
-			Failure: &pb.AuthFailure{
-				ErrorType:   errType,
-				Description: desc,
-			},
-		}
-
-	default:
-		return &pb.CreateSessionResponse{
-			Outcome: pb.AuthOutcome_AUTH_OUTCOME_FAILURE,
-			Failure: &pb.AuthFailure{
-				ErrorType:   pb.ErrorType_ERROR_TYPE_ERROR,
-				Description: "unexpected response: " + resp.Type,
-			},
-		}
-	}
 }
 
 func mapSessionType(t string) pb.SessionType {

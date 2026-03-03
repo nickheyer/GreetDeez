@@ -282,21 +282,7 @@ func protoScalarToTS(f *protogen.Field) string {
 }
 
 func isOptionalField(f *protogen.Field) bool {
-	// proto3 optional keyword
-	if f.Desc.HasOptionalKeyword() {
-		return true
-	}
-	// Sub-message fields in auth response types are optional
-	if f.Desc.Kind() == protoreflect.MessageKind {
-		parentName := string(f.Parent.Desc.Name())
-		if strings.HasSuffix(parentName, "Response") || strings.HasSuffix(parentName, "Request") {
-			fieldMsg := string(f.Message.Desc.Name())
-			if fieldMsg == "AuthMessage" || fieldMsg == "AuthSuccess" || fieldMsg == "AuthFailure" {
-				return true
-			}
-		}
-	}
-	return false
+	return f.Desc.HasOptionalKeyword()
 }
 
 func messageHasRequiredFields(m *protogen.Message) bool {

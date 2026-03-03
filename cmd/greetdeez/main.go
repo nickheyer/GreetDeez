@@ -21,7 +21,6 @@ import (
 	"github.com/nickheyer/greetdeez/internal/greetd"
 	"github.com/nickheyer/greetdeez/internal/server"
 	"github.com/nickheyer/greetdeez/pkg/binds"
-	"github.com/nickheyer/greetdeez/pkg/logs"
 	"github.com/nickheyer/greetdeez/pkg/rpc"
 	"github.com/nickheyer/greetdeez/pkg/webview"
 	uiembed "github.com/nickheyer/greetdeez/ui/default"
@@ -32,8 +31,6 @@ func main() {
 	devUI := flag.String("dev-ui", "", "Navigate webview to this URL instead of embedded UI (e.g. http://localhost:5173)")
 	configPath := flag.String("config", config.DefaultConfigPath, "Path to config file")
 	flag.Parse()
-
-	logs := logs.InitLogger(*devMode)
 
 	cfg := loadConfig(*configPath)
 
@@ -66,7 +63,7 @@ func main() {
 		binds.HardenWebView(w.Widget())
 	}
 
-	srv := server.New(client, &cfg, logs)
+	srv := server.New(client, &cfg)
 	dispatcher := rpc.NewDispatcher(cfg.Debug)
 	greetdeezv1.RegisterGreeterServiceServer(dispatcher, srv)
 	w.Bind("__greetdeez_rpc__", dispatcher.WebViewHandler())

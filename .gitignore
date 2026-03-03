@@ -5,6 +5,7 @@ bin/
 *_pb.ts
 junk/
 gen/
+docs/
 
 # Build artifacts
 node_modules/
