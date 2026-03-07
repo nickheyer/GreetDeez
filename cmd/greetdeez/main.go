@@ -60,6 +60,7 @@ func main() {
 	} else {
 		binds.Fullscreen(w.Window())
 		binds.HardenWebView(w.Widget())
+		w.DisableContextMenu()
 	}
 
 	srv := server.New(client, &cfg)

@@ -14,6 +14,7 @@ package webview
 void CgoWebViewDispatch(webview_t w, uintptr_t arg);
 void CgoWebViewBind(webview_t w, const char *name, uintptr_t index);
 void CgoWebViewUnbind(webview_t w, const char *name);
+void CgoDisableContextMenu(void *widget);
 */
 import "C"
 import (
@@ -117,6 +118,9 @@ type WebView interface {
 
 	// Removes a callback that was previously set by Bind.
 	Unbind(name string) error
+
+	// DisableContextMenu suppresses the browser right-click context menu.
+	DisableContextMenu()
 }
 
 type webview struct {
@@ -327,4 +331,8 @@ func (w *webview) Unbind(name string) error {
 	defer C.free(unsafe.Pointer(cname))
 	C.CgoWebViewUnbind(w.w, cname)
 	return nil
+}
+
+func (w *webview) DisableContextMenu() {
+	C.CgoDisableContextMenu(w.Widget())
 }

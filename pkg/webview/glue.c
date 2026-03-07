@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <webkit2/webkit2.h>
 
 struct binding_context {
     webview_t w;
@@ -33,4 +34,16 @@ void CgoWebViewBind(webview_t w, const char *name, uintptr_t index) {
 
 void CgoWebViewUnbind(webview_t w, const char *name) {
     webview_unbind(w, name);
+}
+
+static gboolean _suppress_context_menu(
+    WebKitWebView *wv, WebKitContextMenu *menu,
+    GdkEvent *event, WebKitHitTestResult *hit, gpointer data) {
+    (void)wv; (void)menu; (void)event; (void)hit; (void)data;
+    return TRUE;
+}
+
+void CgoDisableContextMenu(void *widget) {
+    g_signal_connect(widget, "context-menu",
+        G_CALLBACK(_suppress_context_menu), NULL);
 }
