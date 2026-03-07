@@ -1,3 +1,3 @@
-import { createGreeterServiceClient } from '@greetdeez/proto';
+import { createGreeterServiceClient } from '@nickheyer/greetdeez';
 
 export const client = createGreeterServiceClient();

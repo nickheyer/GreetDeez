@@ -8,7 +8,7 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
-		"@greetdeez/proto": "file:../../npm/proto",
+		"@nickheyer/greetdeez": "file:../../npm/proto",
 		"preact": "^10.25.0"
 	},
 	"devDependencies": {

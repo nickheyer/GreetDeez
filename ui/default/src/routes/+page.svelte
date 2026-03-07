@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { client } from '$lib/client';
-	import { SessionType, PowerAction, type Session, type PowerCapabilities } from '@greetdeez/proto';
+	import { SessionType, PowerAction, type Session, type PowerCapabilities } from '@nickheyer/greetdeez';
 	import { onMount } from 'svelte';
 	import { LoaderCircle, Power, RotateCcw, Moon, TriangleAlert, ChevronDown } from '@lucide/svelte';
 

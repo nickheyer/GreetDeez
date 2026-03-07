@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "preact/hooks";
-import { createGreeterServiceClient } from "@greetdeez/proto";
+import { createGreeterServiceClient } from "@nickheyer/greetdeez";
 import "./app.css";
 
 const client = createGreeterServiceClient();
@@ -32,7 +32,17 @@ export function App() {
 		canSuspend: false,
 	});
 	const [busy, setBusy] = useState(false);
+	const [dropOpen, setDropOpen] = useState(false);
+	const [spinner, setSpinner] = useState(0);
 	const userRef = useRef<HTMLInputElement>(null);
+
+	const spinFrames = ["|", "/", "-", "\\"];
+
+	useEffect(() => {
+		if (!busy) return;
+		const id = setInterval(() => setSpinner((s) => (s + 1) % 4), 120);
+		return () => clearInterval(id);
+	}, [busy]);
 
 	// Clock
 	useEffect(() => {
@@ -185,22 +195,38 @@ export function App() {
 				{sessions.length > 1 && (
 					<div class="field">
 						<label>session:</label>
-						<select
-							value={selectedSession}
-							onChange={(e) =>
-								setSelectedSession(
-									Number(
-										(e.target as HTMLSelectElement).value,
-									),
-								)
-							}
-						>
-							{sessions.map((s, i) => (
-								<option key={s.name} value={i}>
-									{s.name}
-								</option>
-							))}
-						</select>
+						<div class="session-picker">
+							<button
+								type="button"
+								class="session-trigger"
+								onClick={() => setDropOpen(!dropOpen)}
+							>
+								{sessions[selectedSession]?.name ?? "---"}
+							</button>
+							{dropOpen && (
+								<>
+									<div
+										class="session-backdrop"
+										onClick={() => setDropOpen(false)}
+									/>
+									<div class="session-menu">
+										{sessions.map((s, i) => (
+											<button
+												key={s.name}
+												type="button"
+												class={`session-item${i === selectedSession ? " active" : ""}`}
+												onClick={() => {
+													setSelectedSession(i);
+													setDropOpen(false);
+												}}
+											>
+												{s.name}
+											</button>
+										))}
+									</div>
+								</>
+							)}
+						</div>
 					</div>
 				)}
 
@@ -209,7 +235,7 @@ export function App() {
 
 				<div class="actions">
 					<button onClick={handleLogin} disabled={busy}>
-						{busy ? "[...]" : "[login]"}
+						{busy ? `[${spinFrames[spinner]}]` : "[login]"}
 					</button>
 				</div>
 			</div>
