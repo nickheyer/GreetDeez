@@ -2,5 +2,5 @@
 vt = 7
 
 [default_session]
-command = "cage -s -- /usr/bin/greetdeez"
+command = "cage -s -m last -- /usr/bin/greetdeez"
 user = "greetdeez"

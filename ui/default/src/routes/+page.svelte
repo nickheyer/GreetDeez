@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { client } from '$lib/client';
-	import { SessionType, PowerAction, type Session, type PowerCapabilities } from '@nickheyer/greetdeez';
+	import { PowerAction, type Session, type PowerCapabilities } from '@nickheyer/greetdeez';
 	import { onMount } from 'svelte';
 	import { LoaderCircle, Power, RotateCcw, Moon, TriangleAlert, ChevronDown } from '@lucide/svelte';
 
@@ -32,7 +32,7 @@
 	let busy = $derived(status !== 'idle');
 
 	function sessionLabel(s: Session): string {
-		return SessionType[s.type];
+		return s.name;
 	}
 
 	function fail(msg: string, cooldown = false) {
