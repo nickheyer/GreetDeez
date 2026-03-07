@@ -14,11 +14,18 @@ fi
 # tmpfiles.d handles this on systemd distros; this is the fallback.
 install -d -m 0750 -o greetdeez -g greetdeez /var/lib/greetdeez 2>/dev/null || true
 
-# --- PAM config ---
-if [ -f /etc/pam.d/greetd ] && ! grep -q 'pam_kwallet5\|pam_gnome_keyring' /etc/pam.d/greetd 2>/dev/null; then
-    echo "==> Existing /etc/pam.d/greetd lacks keyring support, backing up"
-    cp /etc/pam.d/greetd /etc/pam.d/greetd.bak
-    echo "==> Backed up existing PAM config: /etc/pam.d/greetd.bak"
+# --- PAM config (match SDDM parity: keyring/kwallet support) ---
+# Idempotent: appends optional modules only if not already present.
+# The '-' prefix means modules are silently skipped if not installed.
+if [ -f /etc/pam.d/greetd ] && ! grep -q 'pam_kwallet5' /etc/pam.d/greetd 2>/dev/null; then
+    printf '\n%s\n%s\n%s\n%s\n%s\n' \
+        '-auth       optional    pam_gnome_keyring.so' \
+        '-auth       optional    pam_kwallet5.so' \
+        '-password   optional    pam_gnome_keyring.so    use_authtok' \
+        '-session    optional    pam_gnome_keyring.so    auto_start' \
+        '-session    optional    pam_kwallet5.so         auto_start' \
+        >> /etc/pam.d/greetd
+    echo "==> Patched /etc/pam.d/greetd with keyring/kwallet support"
 fi
 
 # --- greetd config ---
