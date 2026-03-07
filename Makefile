@@ -17,7 +17,7 @@ ui:
 
 # Dev
 dev:
-	cd ui/default && npm run dev
+	cd ui/cyber && npm run dev
 
 # Install
 DESTDIR ?=
@@ -47,8 +47,8 @@ test:
 # Clean
 clean:
 	rm -rf bin/
-	rm -rf ui/default/build ui/default/.svelte-kit
 	rm -rf ui/minimal/build
+	rm -rf ui/cyber/build
 	rm -rf npm/proto/dist
 	rm -rf gen/
 	rm -rf dist/
