@@ -22,7 +22,7 @@ export const ScanlineShader = {
 
 		void main() {
 			// Chromatic aberration
-			float aberr = 0.002;
+			float aberr = 0.0012;
 			vec2 offset = vec2(aberr, 0.0);
 			float r = texture2D(tDiffuse, vUv + offset).r;
 			float g = texture2D(tDiffuse, vUv).g;

@@ -1,15 +1,15 @@
 import type { CyberScene } from "../scene/CyberScene.js";
-import type { LoginOverlay } from "../ui/LoginOverlay.js";
+import type { LoginPanel3D } from "../ui3d/LoginPanel3D.js";
 
-/** Fades in the 3D scene while the login overlay runs its boot typing */
-export async function runBootSequence(scene: CyberScene, overlay: LoginOverlay) {
+/** Fades in the 3D scene while the login panel runs its boot typing */
+export async function runBootSequence(scene: CyberScene, panel: LoginPanel3D) {
 	// Start with scene invisible
 	scene.opacity = 0;
 	scene.bloomStrength = 0.3;
 
-	// Fade in scene over ~2s in parallel with overlay boot text
+	// Fade in scene over ~2s in parallel with panel boot text
 	const fadePromise = fadeIn(scene, 2000);
-	const bootPromise = overlay.runBootSequence();
+	const bootPromise = panel.runBootSequence();
 
 	await Promise.all([fadePromise, bootPromise]);
 

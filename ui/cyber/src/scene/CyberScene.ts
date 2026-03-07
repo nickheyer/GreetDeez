@@ -4,7 +4,7 @@ import { ParticleRain } from "./ParticleRain.js";
 import { NeonCity } from "./NeonCity.js";
 import { HoloPanel } from "./HoloPanel.js";
 import { DataStream } from "./DataStream.js";
-import { CyberComposer } from "../postprocessing/CyberComposer.js";
+import { CyberComposer, BLOOM_LAYER } from "../postprocessing/CyberComposer.js";
 
 export class CyberScene {
 	readonly renderer: THREE.WebGLRenderer;
@@ -62,6 +62,12 @@ export class CyberScene {
 
 		this.streams = new DataStream();
 		this.scene.add(this.streams.group);
+
+		// Enable bloom layer on scene elements (UI objects stay on layer 0 only)
+		const bloomRoots = [this.grid.mesh, this.particles.points, this.city.group, this.holos.group, this.streams.group];
+		for (const root of bloomRoots) {
+			root.traverse((child) => child.layers.enable(BLOOM_LAYER));
+		}
 
 		// Post-processing
 		this.composer = new CyberComposer(this.renderer, this.scene, this.camera);

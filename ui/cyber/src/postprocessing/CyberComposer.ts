@@ -6,32 +6,73 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { GlitchPass } from "three/examples/jsm/postprocessing/GlitchPass.js";
 import { ScanlineShader } from "./ScanlineShader.js";
 
+/** Objects on this layer contribute to bloom; objects only on layer 0 do not. */
+export const BLOOM_LAYER = 1;
+
 export class CyberComposer {
-	private composer: EffectComposer;
+	private camera: THREE.Camera;
+
+	// Selective bloom: renders only bloom-layer objects, applies bloom
+	private bloomComposer: EffectComposer;
 	private bloomPass: UnrealBloomPass;
-	private glitchPass: GlitchPass;
+
+	// Final: renders full scene, composites bloom, applies scanlines + glitch
+	private finalComposer: EffectComposer;
 	private scanlinePass: ShaderPass;
+	private glitchPass: GlitchPass;
 
 	constructor(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
-		this.composer = new EffectComposer(renderer);
+		this.camera = camera;
 
-		// 1. Render pass
-		this.composer.addPass(new RenderPass(scene, camera));
-
-		// 2. Bloom (half-res for perf)
 		const res = new THREE.Vector2(window.innerWidth, window.innerHeight);
-		this.bloomPass = new UnrealBloomPass(res.multiplyScalar(0.5), 1.2, 0.4, 0.3);
-		this.composer.addPass(this.bloomPass);
 
-		// 3. Scanlines + vignette + chromatic aberration
+		// ── Bloom composer (off-screen) ──
+		this.bloomComposer = new EffectComposer(renderer);
+		this.bloomComposer.renderToScreen = false;
+		this.bloomComposer.addPass(new RenderPass(scene, camera));
+		this.bloomPass = new UnrealBloomPass(res.clone().multiplyScalar(0.5), 1.2, 0.4, 0.3);
+		this.bloomComposer.addPass(this.bloomPass);
+
+		// ── Final composer ──
+		this.finalComposer = new EffectComposer(renderer);
+		this.finalComposer.addPass(new RenderPass(scene, camera));
+
+		// Blend bloom texture onto final render (additive)
+		const blendPass = new ShaderPass(
+			new THREE.ShaderMaterial({
+				uniforms: {
+					baseTexture: { value: null },
+					bloomTexture: { value: this.bloomComposer.renderTarget2.texture },
+				},
+				vertexShader: /* glsl */ `
+					varying vec2 vUv;
+					void main() {
+						vUv = uv;
+						gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+					}
+				`,
+				fragmentShader: /* glsl */ `
+					uniform sampler2D baseTexture;
+					uniform sampler2D bloomTexture;
+					varying vec2 vUv;
+					void main() {
+						gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv);
+					}
+				`,
+			}),
+			"baseTexture",
+		);
+		this.finalComposer.addPass(blendPass);
+
+		// Scanlines + vignette + chromatic aberration
 		this.scanlinePass = new ShaderPass(ScanlineShader);
 		this.scanlinePass.uniforms.resolution.value = new THREE.Vector2(window.innerWidth, window.innerHeight);
-		this.composer.addPass(this.scanlinePass);
+		this.finalComposer.addPass(this.scanlinePass);
 
-		// 4. Glitch (disabled by default)
+		// Glitch (disabled by default)
 		this.glitchPass = new GlitchPass();
 		this.glitchPass.enabled = false;
-		this.composer.addPass(this.glitchPass);
+		this.finalComposer.addPass(this.glitchPass);
 	}
 
 	setBloom(strength: number) {
@@ -42,7 +83,6 @@ export class CyberComposer {
 		this.glitchPass.enabled = enabled;
 	}
 
-	/** Trigger a short glitch burst */
 	glitchBurst(durationMs = 200) {
 		this.glitchPass.enabled = true;
 		setTimeout(() => {
@@ -51,15 +91,23 @@ export class CyberComposer {
 	}
 
 	setSize(w: number, h: number) {
-		this.composer.setSize(w, h);
+		this.bloomComposer.setSize(w, h);
+		this.finalComposer.setSize(w, h);
 		this.scanlinePass.uniforms.resolution.value.set(w, h);
 	}
 
 	render() {
-		this.composer.render();
+		// 1. Bloom pass — camera only sees bloom-layer objects
+		this.camera.layers.set(BLOOM_LAYER);
+		this.bloomComposer.render();
+
+		// 2. Final pass — camera sees all default-layer objects
+		this.camera.layers.set(0);
+		this.finalComposer.render();
 	}
 
 	dispose() {
-		this.composer.dispose();
+		this.bloomComposer.dispose();
+		this.finalComposer.dispose();
 	}
 }
