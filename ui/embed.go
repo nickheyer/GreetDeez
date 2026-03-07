@@ -1,5 +1,8 @@
 package ui
 
+//go:generate sh -c "cd default && npm ci && npm run build"
+//go:generate sh -c "cd minimal && npm ci && npm run build"
+
 import (
 	_ "embed"
 	embedfs "embed"

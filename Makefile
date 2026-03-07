@@ -13,8 +13,7 @@ build: gen ui
 
 ui:
 	cd npm/proto && npm install && npm run build
-	cd ui/default && npm install && npm run build
-	cd ui/minimal && npm install && npm run build
+	go generate ./ui/...
 
 # Dev
 dev:

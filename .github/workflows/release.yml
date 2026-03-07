@@ -37,8 +37,8 @@ jobs:
       - name: Build proto package
         run: cd npm/proto && npm ci && npm run build
 
-      - name: Build UI
-        run: cd ui/default && npm ci && npm run build
+      - name: Build UIs
+        run: go generate ./ui/...
 
       - name: Install cross-compile deps
         run: |
