@@ -19,10 +19,11 @@ var cyberFiles embedfs.FS
 // BuildFS returns the embedded filesystem for the given theme.
 func BuildFS(theme string) (fs.FS, error) {
 	switch theme {
-	case "", "cyber", "default":
-		return fs.Sub(cyberFiles, "cyber/build")
-	case "minimal":
+	case "", "minimal", "default":
 		return fs.Sub(minimalFiles, "minimal/build")
+	case "cyber":
+		return fs.Sub(cyberFiles, "cyber/build")
+
 	default:
 		return nil, fmt.Errorf("unknown theme %q", theme)
 	}
