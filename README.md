@@ -6,13 +6,7 @@ Hackable display manager greeter for [greetd](https://git.sr.ht/~kennylevinsen/g
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![AUR](https://img.shields.io/aur/version/greetdeez-bin)](https://aur.archlinux.org/packages/greetdeez-bin)
 
-## Features
 
-- **Native webview** via webkit2gtk-4.1 — no Electron, no browser
-- **Svelte 5** frontend with reactive state and Tailwind CSS
-- **greetd IPC** — speaks the greetd protocol directly over Unix sockets
-- **Multi-session** — discovers Wayland and X11 sessions from `.desktop` files
-- **Hackable** — swap the entire UI by replacing the embedded Svelte app
 
 ## Installation
 
