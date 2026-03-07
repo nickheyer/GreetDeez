@@ -14,6 +14,7 @@ build: gen ui
 ui:
 	cd npm/proto && npm install && npm run build
 	cd ui/default && npm install && npm run build
+	cd ui/minimal && npm install && npm run build
 
 # Dev
 dev:
@@ -48,6 +49,7 @@ test:
 clean:
 	rm -rf bin/
 	rm -rf ui/default/build ui/default/.svelte-kit
+	rm -rf ui/minimal/build
 	rm -rf npm/proto/dist
 	rm -rf gen/
 	rm -rf dist/

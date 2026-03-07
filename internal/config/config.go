@@ -24,7 +24,8 @@ type Config struct {
 }
 
 type UIConfig struct {
-	Path string `toml:"path"`
+	Path  string `toml:"path"`
+	Theme string `toml:"theme"`
 }
 
 type WindowConfig struct {
@@ -135,6 +136,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("GREETDEEZ_UI_PATH"); v != "" {
 		cfg.UI.Path = v
+	}
+	if v := os.Getenv("GREETDEEZ_UI_THEME"); v != "" {
+		cfg.UI.Theme = v
 	}
 	if v := os.Getenv("GREETDEEZ_DEBUG"); v != "" {
 		cfg.Debug = v == "true" || v == "1"

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -23,7 +22,7 @@ import (
 	"github.com/nickheyer/greetdeez/pkg/binds"
 	"github.com/nickheyer/greetdeez/pkg/rpc"
 	"github.com/nickheyer/greetdeez/pkg/webview"
-	uiembed "github.com/nickheyer/greetdeez/ui/default"
+	uipkg "github.com/nickheyer/greetdeez/ui"
 )
 
 func main() {
@@ -39,7 +38,7 @@ func main() {
 
 	navURL := *devUI
 	if navURL == "" {
-		uiFS, err := resolveUIFS(cfg.UI.Path)
+		uiFS, err := resolveUIFS(cfg.UI.Path, cfg.UI.Theme)
 		if err != nil {
 			slog.Error("failed to resolve UI", "error", err)
 			os.Exit(1)
@@ -75,10 +74,6 @@ func main() {
 		slog.Info("received signal, shutting down", "signal", sig)
 		w.Terminate()
 	}()
-
-	// Show a dark splash immediately to mask webkit init latency.
-	// The real Svelte app loads over it once the HTTP server is ready.
-	w.Navigate("data:text/html," + url.PathEscape(uiembed.SplashHTML))
 
 	// Navigate to the real app on a goroutine so w.Run() can start the event loop.
 	go func() {
@@ -143,8 +138,8 @@ func (w *gzipResponseWriter) Write(b []byte) (int, error) {
 	return w.Writer.Write(b)
 }
 
-// resolveUIFS returns the filesystem to serve: custom path if configured, embedded default otherwise.
-func resolveUIFS(customPath string) (http.FileSystem, error) {
+// resolveUIFS returns the filesystem to serve: custom path if configured, embedded theme otherwise.
+func resolveUIFS(customPath, theme string) (http.FileSystem, error) {
 	if customPath != "" {
 		info, err := os.Stat(customPath)
 		if err != nil || !info.IsDir() {
@@ -153,7 +148,8 @@ func resolveUIFS(customPath string) (http.FileSystem, error) {
 		slog.Info("using custom UI", "path", customPath)
 		return http.Dir(customPath), nil
 	}
-	sub, err := uiembed.BuildFS()
+
+	sub, err := uipkg.BuildFS(theme)
 	if err != nil {
 		return nil, fmt.Errorf("embedded fs: %w", err)
 	}
