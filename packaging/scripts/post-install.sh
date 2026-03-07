@@ -14,6 +14,13 @@ fi
 # tmpfiles.d handles this on systemd distros; this is the fallback.
 install -d -m 0750 -o greetdeez -g greetdeez /var/lib/greetdeez 2>/dev/null || true
 
+# --- PAM config ---
+if [ -f /etc/pam.d/greetd ] && ! grep -q 'pam_kwallet5\|pam_gnome_keyring' /etc/pam.d/greetd 2>/dev/null; then
+    echo "==> Existing /etc/pam.d/greetd lacks keyring support, backing up"
+    cp /etc/pam.d/greetd /etc/pam.d/greetd.bak
+    echo "==> Backed up existing PAM config: /etc/pam.d/greetd.bak"
+fi
+
 # --- greetd config ---
 if [ -f /etc/greetd/config.toml ]; then
     echo "==> Found existing greetd config for backup: /etc/greetd/config.toml"

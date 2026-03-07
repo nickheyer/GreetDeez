@@ -24,6 +24,7 @@ archives:
     formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
+      - packaging/pam.d/greetd
       - config/greetd.toml
       - config/greetdeez.conf
       - packaging/sysusers.d/greetdeez.conf
@@ -42,6 +43,9 @@ nfpms:
     formats: [deb, rpm, archlinux, apk]
     bindir: /usr/bin
     contents:
+      - src: packaging/pam.d/greetd
+        dst: /etc/pam.d/greetd
+        type: config
       - src: config/greetd.toml
         dst: /etc/greetd/greetd.toml
         type: config
@@ -82,11 +86,13 @@ aurs:
     provides: [greetdeez]
     conflicts: [greetdeez]
     backup:
+      - etc/pam.d/greetd
       - etc/greetd/greetd.toml
       - etc/greetd/greetdeez.conf
     install: packaging/aur/greetdeez.install
     package: |-
       install -Dm755 greetdeez "${pkgdir}/usr/bin/greetdeez"
+      install -Dm644 packaging/pam.d/greetd "${pkgdir}/etc/pam.d/greetd"
       install -Dm644 config/greetd.toml "${pkgdir}/etc/greetd/greetd.toml"
       install -Dm644 config/greetdeez.conf "${pkgdir}/etc/greetd/greetdeez.conf"
       install -Dm644 packaging/sysusers.d/greetdeez.conf "${pkgdir}/usr/lib/sysusers.d/greetdeez.conf"

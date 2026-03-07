@@ -27,6 +27,7 @@ install: build
 	install -Dm755 bin/greetdeez $(DESTDIR)$(PREFIX)/bin/greetdeez
 	install -Dm644 config/greetd.toml $(DESTDIR)/etc/greetd/greetd.toml
 	install -Dm644 config/greetdeez.conf $(DESTDIR)/etc/greetd/greetdeez.conf
+	install -Dm644 packaging/pam.d/greetd $(DESTDIR)/etc/pam.d/greetd
 	install -Dm644 packaging/sysusers.d/greetdeez.conf $(DESTDIR)/usr/lib/sysusers.d/greetdeez.conf
 	install -Dm644 packaging/tmpfiles.d/greetdeez.conf $(DESTDIR)/usr/lib/tmpfiles.d/greetdeez.conf
 	install -Dm755 packaging/scripts/post-install.sh $(DESTDIR)/usr/share/greetdeez/post-install.sh
@@ -36,6 +37,7 @@ uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/greetdeez
 	rm -f $(DESTDIR)/etc/greetd/greetd.toml
 	rm -f $(DESTDIR)/etc/greetd/greetdeez.conf
+	rm -f $(DESTDIR)/etc/pam.d/greetd
 	rm -f $(DESTDIR)/usr/lib/sysusers.d/greetdeez.conf
 	rm -f $(DESTDIR)/usr/lib/tmpfiles.d/greetdeez.conf
 	rm -rf $(DESTDIR)/usr/share/greetdeez

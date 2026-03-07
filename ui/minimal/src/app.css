@@ -15,7 +15,7 @@ body {
 	background: #0a0a0a;
 	color: #33ff33;
 	font-family: "Courier New", Courier, monospace;
-	font-size: 14px;
+	font-size: clamp(14px, 1.8vmin, 32px);
 }
 
 .shell {
@@ -29,22 +29,22 @@ body {
 
 .clock {
 	position: absolute;
-	top: 16px;
-	right: 20px;
-	font-size: 13px;
+	top: 1.15em;
+	right: 1.4em;
+	font-size: 0.93em;
 	opacity: 0.7;
 }
 
 .login-box {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
-	min-width: 320px;
+	gap: 0.85em;
+	min-width: 22em;
 }
 
 .hostname {
-	font-size: 16px;
-	margin-bottom: 8px;
+	font-size: 1.15em;
+	margin-bottom: 0.57em;
 	text-align: center;
 	opacity: 0.8;
 }
@@ -52,11 +52,11 @@ body {
 .field {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: 0.57em;
 }
 
 .field label {
-	min-width: 100px;
+	min-width: 7em;
 	text-align: right;
 }
 
@@ -67,13 +67,13 @@ body {
 	color: #33ff33;
 	font-family: inherit;
 	font-size: inherit;
-	padding: 4px 8px;
+	padding: 0.3em 0.57em;
 	outline: none;
 }
 
 .field input:focus {
 	border-color: #66ff66;
-	box-shadow: 0 0 4px rgba(51, 255, 51, 0.3);
+	box-shadow: 0 0 0.3em rgba(51, 255, 51, 0.3);
 }
 
 .session-picker {
@@ -89,13 +89,13 @@ body {
 	color: #33ff33;
 	font-family: inherit;
 	font-size: inherit;
-	padding: 4px 8px;
+	padding: 0.3em 0.57em;
 	cursor: pointer;
 }
 
 .session-trigger:hover {
 	border-color: #66ff66;
-	box-shadow: 0 0 4px rgba(51, 255, 51, 0.3);
+	box-shadow: 0 0 0.3em rgba(51, 255, 51, 0.3);
 }
 
 .session-backdrop {
@@ -106,7 +106,7 @@ body {
 
 .session-menu {
 	position: absolute;
-	bottom: calc(100% + 4px);
+	bottom: calc(100% + 0.3em);
 	left: 0;
 	right: 0;
 	display: flex;
@@ -123,7 +123,7 @@ body {
 	color: #33ff33;
 	font-family: inherit;
 	font-size: inherit;
-	padding: 4px 8px;
+	padding: 0.3em 0.57em;
 	cursor: pointer;
 }
 
@@ -139,7 +139,7 @@ body {
 .actions {
 	display: flex;
 	justify-content: center;
-	margin-top: 4px;
+	margin-top: 0.3em;
 }
 
 button {
@@ -148,7 +148,7 @@ button {
 	color: #33ff33;
 	font-family: inherit;
 	font-size: inherit;
-	padding: 4px 16px;
+	padding: 0.3em 1.15em;
 	cursor: pointer;
 }
 
@@ -163,27 +163,27 @@ button:active {
 .error {
 	color: #ff3333;
 	text-align: center;
-	font-size: 13px;
+	font-size: 0.93em;
 	min-height: 1.2em;
 }
 
 .caps-warn {
 	color: #ffaa33;
 	text-align: center;
-	font-size: 12px;
+	font-size: 0.85em;
 }
 
 .power-bar {
 	position: absolute;
-	bottom: 16px;
-	right: 20px;
+	bottom: 1.15em;
+	right: 1.4em;
 	display: flex;
-	gap: 8px;
+	gap: 0.57em;
 }
 
 .power-bar button {
-	font-size: 12px;
-	padding: 2px 10px;
+	font-size: 0.85em;
+	padding: 0.15em 0.7em;
 	opacity: 0.7;
 }
 
