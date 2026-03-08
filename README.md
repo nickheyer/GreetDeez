@@ -19,7 +19,7 @@ GreetDeez ships with three built-in themes: `minimal` (default), `cyber`, and `d
 theme = "cyber"   # "minimal" (default), "cyber", or "doom"
 ```
 
-To use your own custom front end, point `path` to a directory containing an `index.html` (and any JS/CSS it references). When `path` is set, it takes priority over the built-in theme:
+To use your own custom front end, point `path` to a directory containing an `index.html` (and any JS/CSS it references). When `path` is set, it takes priority over the built-in theme. See [Building a Custom Front End](#building-a-custom-front-end) for details.
 
 ```toml
 [ui]
@@ -99,6 +99,8 @@ This is installed automatically by the packages.
 All options with their defaults (`/etc/greetd/greetdeez.conf`):
 
 ```toml
+debug = false
+
 [window]
 title = "GreetDeez"
 # width and height are auto-detected from DRM. Under cage these are irrelevant.
@@ -120,13 +122,98 @@ enabled = true
 #     { path = "/usr/share/wayland-sessions", type = "wayland" },
 #     { path = "/usr/share/xsessions", type = "x11" },
 # ]
+# x11_wrapper = ["startx", "/usr/bin/env"]
 
-[theme]
-accent_color = ""
-aurora_speed = 1.0
+[ui]
+theme = "minimal"
+# path = "/path/to/your/custom/ui"
 ```
 
-Environment variables (`GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, etc.) override file values.
+Environment variables (`GREETDEEZ_*`) override file values. For example: `GREETDEEZ_UI_THEME`, `GREETDEEZ_UI_PATH`, `GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, `GREETDEEZ_POWER_ENABLED`, `GREETDEEZ_DEBUG`.
+
+## Building a Custom Front End
+
+GreetDeez loads your UI in a webview and injects a global RPC function (`window.__greetdeez_rpc__`) that your code uses to talk to the backend. The [`@nickheyer/greetdeez`](https://www.npmjs.com/package/@nickheyer/greetdeez) npm package wraps this into a typed client so you don't need to deal with the transport layer yourself.
+
+### Install
+
+```sh
+npm install @nickheyer/greetdeez
+```
+
+### Create the client
+
+```ts
+import { createGreeterServiceClient } from "@nickheyer/greetdeez";
+
+const client = createGreeterServiceClient();
+```
+
+When running inside GreetDeez, the client uses the injected RPC bridge automatically. During local development (outside the webview), it falls back to no-op defaults — or you can pass mock implementations:
+
+```ts
+const client = createGreeterServiceClient({
+  dev: {
+    listSessions: async () => ({
+      sessions: [{ name: "sway", cmd: ["sway"], type: 1, desktop: "" }],
+    }),
+    getSystemInfo: async () => ({ info: { hostname: "dev" } }),
+  },
+});
+```
+
+### Available methods
+
+| Method | Description |
+|---|---|
+| `listSessions()` | Get available desktop sessions (Wayland/X11) |
+| `getSystemInfo()` | Get hostname |
+| `getPowerCapabilities()` | Check which power actions are available |
+| `getState()` | Load persisted state (last user, last session) |
+| `authenticate({ username, password })` | Validate credentials without starting a session |
+| `startSession({ session })` | Start the selected desktop session |
+| `login({ username, password, session })` | Authenticate + start session in one call |
+| `executePowerAction({ action })` | Poweroff, reboot, or suspend |
+| `saveState({ state })` | Persist last user / last session |
+
+### Minimal example
+
+```ts
+import {
+  createGreeterServiceClient,
+  PowerAction,
+  type Session,
+} from "@nickheyer/greetdeez";
+
+const client = createGreeterServiceClient();
+
+// Load initial data
+const { sessions } = await client.listSessions();
+const { info } = await client.getSystemInfo();
+const { capabilities } = await client.getPowerCapabilities();
+const { state } = await client.getState();
+
+// Log in
+const session: Session = sessions[0];
+const auth = await client.authenticate({ username: "nick", password: "..." });
+if (auth.success) {
+  await client.startSession({ session });
+  await client.saveState({ state: { lastUser: "nick", lastSession: session.name } });
+}
+
+// Power actions
+await client.executePowerAction({ action: PowerAction.REBOOT });
+```
+
+Build your project so it outputs an `index.html`, then point GreetDeez at it:
+
+```toml
+[ui]
+path = "/path/to/your/build/output"
+```
+
+Any framework (or none) works — the only requirement* is that your output is a static site that imports `@nickheyer/greetdeez`. This is of course just a client wrapper around the greetdeez protocol, which you could implement yourself, see: `proto/**/*.proto`
+
 
 ## License
 
