@@ -304,7 +304,6 @@ export class LoginPanel3D extends THREE.Group {
 		if (name) {
 			this.hostnameText.text = name;
 			this.hostnameText.sync();
-			this.hostnameText.visible = true;
 		}
 	}
 
