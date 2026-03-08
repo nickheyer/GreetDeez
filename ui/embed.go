@@ -2,6 +2,7 @@ package ui
 
 //go:generate sh -c "cd minimal && npm ci && npm run build"
 //go:generate sh -c "cd cyber && npm ci && npm run build"
+//go:generate sh -c "cd doom && npm ci && npm run build"
 
 import (
 	_ "embed"
@@ -16,6 +17,9 @@ var minimalFiles embedfs.FS
 //go:embed all:cyber/build
 var cyberFiles embedfs.FS
 
+//go:embed all:doom/build
+var doomFiles embedfs.FS
+
 // BuildFS returns the embedded filesystem for the given theme.
 func BuildFS(theme string) (fs.FS, error) {
 	switch theme {
@@ -23,6 +27,8 @@ func BuildFS(theme string) (fs.FS, error) {
 		return fs.Sub(minimalFiles, "minimal/build")
 	case "cyber":
 		return fs.Sub(cyberFiles, "cyber/build")
+	case "doom":
+		return fs.Sub(doomFiles, "doom/build")
 
 	default:
 		return nil, fmt.Errorf("unknown theme %q", theme)
