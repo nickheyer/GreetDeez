@@ -6,7 +6,27 @@ Hackable display manager greeter for [greetd](https://git.sr.ht/~kennylevinsen/g
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![AUR](https://img.shields.io/aur/version/greetdeez-bin)](https://aur.archlinux.org/packages/greetdeez-bin)
 
+![minimal](minimal.webp)
 
+> **This is the default theme.** It serves as an example and template for creating a custom front end for your login UI.
+
+## Themes
+
+GreetDeez ships with three built-in themes: `minimal` (default), `cyber`, and `doom`. Set the theme in `/etc/greetd/greetdeez.conf`:
+
+```toml
+[ui]
+theme = "cyber"   # "minimal" (default), "cyber", or "doom"
+```
+
+To use your own custom front end, point `path` to a directory containing an `index.html` (and any JS/CSS it references). When `path` is set, it takes priority over the built-in theme:
+
+```toml
+[ui]
+path = "/usr/share/greetdeez-themes/my-theme/dist"
+```
+
+The `GREETDEEZ_UI_THEME` environment variable can also be used to override the theme.
 
 ## Installation
 
