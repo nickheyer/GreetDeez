@@ -108,9 +108,14 @@ func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResp
 }
 
 func buildSessionEnv(sessType pb.SessionType, desktop string) []string {
-	typeStr := "wayland"
-	if sessType == pb.SessionType_SESSION_TYPE_X11 {
+	var typeStr string
+	switch sessType {
+	case pb.SessionType_SESSION_TYPE_X11:
 		typeStr = "x11"
+	case pb.SessionType_SESSION_TYPE_WAYLAND:
+		typeStr = "wayland"
+	default:
+		typeStr = "tty"
 	}
 	env := []string{"XDG_SESSION_TYPE=" + typeStr}
 

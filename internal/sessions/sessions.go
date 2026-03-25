@@ -62,7 +62,26 @@ func List(dirs []config.SessionDir) []Session {
 		return out[i].Name < out[j].Name
 	})
 
+	// Always include a TTY
+	if shell := detectShell(); shell != "" {
+		out = append(out, Session{
+			Name: "TTY",
+			Cmd:  []string{shell},
+			Type: "tty",
+		})
+	}
+
 	return out
+}
+
+// First available shell
+func detectShell() string {
+	for _, sh := range []string{"bash", "zsh", "fish", "sh"} {
+		if p, err := exec.LookPath(sh); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 func parseDesktopEntry(path, sessType string) (*Session, error) {

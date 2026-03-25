@@ -102,10 +102,7 @@ func detectDefaults() Config {
 			SuspendCmd:  detectStandbyCmd(),
 		},
 		Sessions: SessionsConfig{
-			Dirs: []SessionDir{
-				{Path: "/usr/share/wayland-sessions", Type: "wayland"},
-				{Path: "/usr/share/xsessions", Type: "x11"},
-			},
+			Dirs:       detectSessionDirs(),
 			X11Wrapper: []string{"startx", "/usr/bin/env"},
 		},
 	}
@@ -194,4 +191,59 @@ func detectStandbyCmd() []string {
 func hasCmd(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
+}
+
+// Builds session directories from $XDG_DATA_DIRS
+func detectSessionDirs() []SessionDir {
+	dataDirs := os.Getenv("XDG_DATA_DIRS")
+	if dataDirs == "" {
+		dataDirs = probeShareDirs()
+	}
+
+	sessTypes := [][2]string{
+		{"wayland-sessions", "wayland"},
+		{"xsessions", "x11"},
+	}
+
+	var dirs []SessionDir
+	for _, base := range strings.Split(dataDirs, ":") {
+		if base == "" {
+			continue
+		}
+		for _, st := range sessTypes {
+			dirs = append(dirs, SessionDir{
+				Path: filepath.Join(base, st[0]),
+				Type: st[1],
+			})
+		}
+	}
+	return dirs
+}
+
+func probeShareDirs() string {
+	candidates := []string{
+		"/usr/local/share",
+		"/usr/share",
+		"/run/current-system/sw/share",   // NixOS system profile
+		"/var/lib/flatpak/exports/share", // Flatpak system
+	}
+
+	if home := os.Getenv("HOME"); home != "" {
+		candidates = append(candidates,
+			filepath.Join(home, ".local/share"),
+			filepath.Join(home, ".nix-profile/share"),
+		)
+	}
+
+	var found []string
+	for _, d := range candidates {
+		if info, err := os.Stat(d); err == nil && info.IsDir() {
+			found = append(found, d)
+		}
+	}
+
+	if len(found) == 0 {
+		return "/usr/local/share:/usr/share"
+	}
+	return strings.Join(found, ":")
 }
