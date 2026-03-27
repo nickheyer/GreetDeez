@@ -1,6 +1,6 @@
 {
   lib,
-  buildGoModule,
+  buildGoApplication,
   pkg-config,
   nodejs,
   buf,
@@ -9,14 +9,14 @@
   gnumake,
   gtk3,
   webkitgtk_4_1,
+  version,
 }:
 
-buildGoModule {
+buildGoApplication {
   pname = "greetdeez";
-  version = "0.1.0";
+  inherit version;
   src = lib.cleanSource ./..;
-
-  vendorHash = null;
+  modules = ../gomod2nix.toml;
 
   nativeBuildInputs = [ pkg-config nodejs buf protoc-gen-go protoc-gen-es gnumake ];
   buildInputs = [ gtk3 webkitgtk_4_1 ];
