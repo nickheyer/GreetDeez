@@ -50,8 +50,11 @@ jobs:
 
       - name: Install cross-compile deps
         run: |
+          echo 'deb http://deb.debian.org/debian trixie main' > /etc/apt/sources.list.d/trixie.list
+          printf 'Package: *\nPin: release n=trixie\nPin-Priority: 100\n' > /etc/apt/preferences.d/trixie
           dpkg --add-architecture arm64 && apt-get update -qq
           apt-get install -yqq libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-0:arm64 python3-pip
+          apt-get install -yqq -t trixie nix-bin
           mkdir -p /usr/lib/aarch64-linux-gnu/pkgconfig
           for pc in /usr/lib/x86_64-linux-gnu/pkgconfig/*.pc; do
             sed 's|x86_64-linux-gnu|aarch64-linux-gnu|g' "$pc" \
@@ -72,20 +75,12 @@ jobs:
             [ -n "$src" ] && ln -sf "$src" "$target"
           done
 
-      - name: Install nix
-        run: |
-          mkdir -p /etc/nix
-          echo "build-users-group =" > /etc/nix/nix.conf
-          mkdir -m 0755 /nix && chown root /nix
-          curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
-
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AUR_KEY: ${{ secrets.AUR_KEY }}
           NUR_TOKEN: ${{ secrets.NUR_TOKEN }}
         run: |
-          . /root/.nix-profile/etc/profile.d/nix.sh
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           mkdir -p ~/.ssh && ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
           goreleaser release --clean
