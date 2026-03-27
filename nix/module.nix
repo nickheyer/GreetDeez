@@ -33,7 +33,7 @@ let
 in
 {
   options.services.greetdeez = {
-    enable = lib.mkEnableOption "GreetDeez - Hackable display manager greeter for greetd, powered by Go + webkit2gtk";
+    enable = lib.mkEnableOption "GreetDeez - Hackable display manager for greetd, powered by Go + webkit2gtk";
 
     package = lib.mkOption {
       type = lib.types.package;

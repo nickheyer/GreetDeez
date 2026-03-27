@@ -1,6 +1,6 @@
 # GreetDeez
 
-Hackable display manager greeter for [greetd](https://git.sr.ht/~kennylevinsen/greetd), powered by Go + webkit2gtk.
+Hackable display manager for [greetd](https://git.sr.ht/~kennylevinsen/greetd), powered by Go + webkit2gtk.
 
 [![Release](https://github.com/nickheyer/GreetDeez/actions/workflows/release.yml/badge.svg)](https://github.com/nickheyer/GreetDeez/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

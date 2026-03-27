@@ -1,5 +1,5 @@
 {
-  description = "GreetDeez — modular display greeter for greetd";
+  description = "GreetDeez - Hackable display manager for greetd, powered by Go + webkit2gtk";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

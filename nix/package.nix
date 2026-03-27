@@ -32,7 +32,7 @@ stdenv.mkDerivation {
   '';
 
   meta = {
-    description = "Hackable display manager greeter for greetd, powered by Go + webkit2gtk";
+    description = "Hackable display manager for greetd, powered by Go + webkit2gtk";
     homepage = "https://github.com/nickheyer/greetdeez";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
