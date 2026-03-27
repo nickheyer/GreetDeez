@@ -119,3 +119,4 @@ release:
   github:
     owner: nickheyer
     name: GreetDeez
+  replace_existing_artifacts: true
