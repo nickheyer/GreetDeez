@@ -50,7 +50,7 @@ jobs:
 
       - name: Install cross-compile deps
         run: |
-          echo 'deb http://deb.debian.org/debian trixie main' > /etc/apt/sources.list.d/trixie.list
+          echo 'deb [trusted=yes] http://deb.debian.org/debian trixie main' > /etc/apt/sources.list.d/trixie.list
           printf 'Package: *\nPin: release n=trixie\nPin-Priority: 100\n' > /etc/apt/preferences.d/trixie
           dpkg --add-architecture arm64 && apt-get update -qq
           apt-get install -yqq libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-0:arm64 python3-pip
