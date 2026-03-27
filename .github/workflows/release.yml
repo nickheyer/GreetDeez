@@ -72,10 +72,12 @@ jobs:
             [ -n "$src" ] && ln -sf "$src" "$target"
           done
 
-      - uses: cachix/install-nix-action@v30
-        with:
-          extra_nix_config: |
-            build-users-group =
+      - name: Install nix
+        run: |
+          mkdir -p /etc/nix
+          echo "build-users-group =" > /etc/nix/nix.conf
+          mkdir -m 0755 /nix && chown root /nix
+          curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
 
       - name: Release
         env:
@@ -83,6 +85,7 @@ jobs:
           AUR_KEY: ${{ secrets.AUR_KEY }}
           NUR_TOKEN: ${{ secrets.NUR_TOKEN }}
         run: |
+          . /root/.nix-profile/etc/profile.d/nix.sh
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           mkdir -p ~/.ssh && ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
           goreleaser release --clean
