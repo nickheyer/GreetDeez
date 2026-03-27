@@ -94,6 +94,24 @@ aurs:
       install -Dm755 packaging/scripts/post-install.sh "${pkgdir}/usr/share/greetdeez/post-install.sh"
       install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/greetdeez-bin/LICENSE"
 
+nix:
+  - name: greetdeez
+    ids: [tarball]
+    homepage: "https://github.com/nickheyer/greetdeez"
+    description: "Minimal, hackable display manager greeter for greetd"
+    license: mit
+    skip_upload: '{{ if .Env.NUR_TOKEN }}auto{{ else }}true{{ end }}'
+    path: pkgs/greetdeez/default.nix
+    commit_msg_template: "{{ .ProjectName }}: {{ .Tag }}"
+    repository:
+      owner: nickheyer
+      name: nixpkg
+      branch: main
+      token: "{{ .Env.NUR_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+
 checksum:
   name_template: checksums.txt
 
