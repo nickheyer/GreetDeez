@@ -37,7 +37,7 @@ in
 
     package = lib.mkOption {
       type = lib.types.package;
-      default = self.packages.${pkgs.system}.default;
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
       description = "The greetdeez package to use.";
     };
 
@@ -85,7 +85,7 @@ in
     services.greetd = {
       enable = true;
       settings = {
-        terminal.vt = cfg.vt;
+        terminal.vt = lib.mkDefault cfg.vt;
         default_session = {
           command =
             if cfg.cage.enable then
