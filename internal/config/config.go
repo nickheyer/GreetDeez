@@ -197,7 +197,7 @@ func hasCmd(name string) bool {
 func detectSessionDirs() []SessionDir {
 	dataDirs := os.Getenv("XDG_DATA_DIRS")
 	if dataDirs == "" {
-		dataDirs = probeShareDirs()
+		dataDirs = "/usr/local/share:/usr/share"
 	}
 
 	sessTypes := [][2]string{
@@ -218,32 +218,4 @@ func detectSessionDirs() []SessionDir {
 		}
 	}
 	return dirs
-}
-
-func probeShareDirs() string {
-	candidates := []string{
-		"/usr/local/share",
-		"/usr/share",
-		"/run/current-system/sw/share",   // NixOS system profile
-		"/var/lib/flatpak/exports/share", // Flatpak system
-	}
-
-	if home := os.Getenv("HOME"); home != "" {
-		candidates = append(candidates,
-			filepath.Join(home, ".local/share"),
-			filepath.Join(home, ".nix-profile/share"),
-		)
-	}
-
-	var found []string
-	for _, d := range candidates {
-		if info, err := os.Stat(d); err == nil && info.IsDir() {
-			found = append(found, d)
-		}
-	}
-
-	if len(found) == 0 {
-		return "/usr/local/share:/usr/share"
-	}
-	return strings.Join(found, ":")
 }
