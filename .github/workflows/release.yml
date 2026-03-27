@@ -73,7 +73,9 @@ jobs:
           done
 
       - name: Install nix-hash
-        run: curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
+        run: |
+          mkdir -m 0755 /nix && chown root /nix
+          curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
 
       - name: Release
         env:
