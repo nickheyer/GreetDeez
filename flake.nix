@@ -1,29 +1,49 @@
 {
-  description = "GreetDeez greeter";
+  description = "GreetDeez — modular display greeter for greetd";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs =
-    { nixpkgs, ... }:
+    { self, nixpkgs, ... }:
     let
-      system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      forEachSystem = nixpkgs.lib.genAttrs systems;
     in
     {
-      devShells.${system}.default = pkgs.mkShell {
-        buildInputs = with pkgs; [
-          pkg-config
-          go
-          nodejs
-          buf
-          protoc-gen-go
-          protoc-gen-es
-          gnumake
-          gtk3
-          webkitgtk_4_1
-        ];
-      };
+      packages = forEachSystem (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.callPackage ./nix/package.nix { };
+        }
+      );
+
+      nixosModules.default = import ./nix/module.nix self;
+
+      devShells = forEachSystem (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            buildInputs = with pkgs; [
+              pkg-config
+              go
+              nodejs
+              buf
+              protoc-gen-go
+              protoc-gen-es
+              gnumake
+              gtk3
+              webkitgtk_4_1
+            ];
+          };
+        }
+      );
     };
 }

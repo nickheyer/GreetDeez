@@ -57,6 +57,32 @@ curl -1sLf 'https://dl.cloudsmith.io/public/nickheyer/greetdeez/setup.alpine.sh'
 sudo apk add greetdeez
 ```
 
+### NixOS (Flake)
+
+Add the flake input and enable the module:
+
+```nix
+# flake.nix
+inputs.greetdeez.url = "github:nickheyer/GreetDeez";
+
+# configuration.nix
+{ inputs, ... }:
+{
+  imports = [ inputs.greetdeez.nixosModules.default ];
+
+  services.greetdeez.enable = true;
+}
+```
+
+Optional settings can be passed through as toml:
+
+```nix
+services.greetdeez.settings = {
+  ui.theme = "cyber";
+  power.enabled = true;
+};
+```
+
 ### From source
 
 Requires: Go 1.26+, Node.js 20+, `libwebkit2gtk-4.1-dev`, `pkg-config`
