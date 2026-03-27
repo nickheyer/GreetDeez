@@ -1,7 +1,6 @@
 {
   lib,
-  stdenv,
-  go,
+  buildGoModule,
   pkg-config,
   nodejs,
   buf,
@@ -12,18 +11,18 @@
   webkitgtk_4_1,
 }:
 
-stdenv.mkDerivation {
+buildGoModule {
   pname = "greetdeez";
   version = "0.1.0";
   src = lib.cleanSource ./..;
 
-  nativeBuildInputs = [ go pkg-config nodejs buf protoc-gen-go protoc-gen-es gnumake ];
+  vendorHash = null;
+
+  nativeBuildInputs = [ pkg-config nodejs buf protoc-gen-go protoc-gen-es gnumake ];
   buildInputs = [ gtk3 webkitgtk_4_1 ];
 
   buildPhase = ''
     export HOME=$TMPDIR
-    export GOPATH=$TMPDIR/go
-    export GOCACHE=$TMPDIR/go-cache
     make build
   '';
 
