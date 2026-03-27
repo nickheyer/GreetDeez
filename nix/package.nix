@@ -23,6 +23,8 @@ buildGoApplication {
 
   buildPhase = ''
     export HOME=$TMPDIR
+    export GOBIN=$TMPDIR/bin
+    export PATH=$GOBIN:$PATH
     make build
   '';
 
