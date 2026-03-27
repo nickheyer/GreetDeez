@@ -15,6 +15,16 @@ func Fullscreen(gtkWindow unsafe.Pointer) {
 	C.gtk_window_fullscreen(win)
 }
 
+// SetZoomLevel sets the page zoom on the WebKitWebView.
+// scale=2 means everything renders at 2× size.
+func SetZoomLevel(webkitWebView unsafe.Pointer, scale int) {
+	if scale <= 1 {
+		return
+	}
+	wv := (*C.WebKitWebView)(webkitWebView)
+	C.webkit_web_view_set_zoom_level(wv, C.double(scale))
+}
+
 // Banning browser features bad for greeter
 func HardenWebView(webkitWebView unsafe.Pointer) {
 	wv := (*C.WebKitWebView)(webkitWebView)

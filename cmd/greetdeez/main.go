@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -51,6 +52,12 @@ func main() {
 		navURL = fmt.Sprintf("http://%s", addr)
 	}
 
+	// Set GDK_SCALE before GTK initialises (affects X11 backend).
+	if cfg.Window.Scale > 1 {
+		os.Setenv("GDK_SCALE", strconv.Itoa(cfg.Window.Scale))
+		slog.Info("applied display scale", "scale", cfg.Window.Scale)
+	}
+
 	w := webview.New(*devMode)
 	defer w.Destroy()
 
@@ -60,6 +67,7 @@ func main() {
 	} else {
 		binds.Fullscreen(w.Window())
 		binds.HardenWebView(w.Widget())
+		binds.SetZoomLevel(w.Widget(), cfg.Window.Scale)
 		w.DisableContextMenu()
 	}
 

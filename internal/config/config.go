@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,7 @@ type WindowConfig struct {
 	Title  string `toml:"title"`
 	Width  int    `toml:"width"`
 	Height int    `toml:"height"`
+	Scale  int    `toml:"scale"`
 }
 
 type AuthConfig struct {
@@ -85,12 +87,14 @@ func Load(path string) (Config, error) {
 
 func detectDefaults() Config {
 	w, h := detectDisplaySize()
+	scale := detectDisplayScale()
 
 	return Config{
 		Window: WindowConfig{
 			Title:  "GreetDeez",
 			Width:  w,
 			Height: h,
+			Scale:  scale,
 		},
 		Auth: AuthConfig{
 			TimeoutSeconds: 30,
@@ -137,6 +141,11 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("GREETDEEZ_UI_THEME"); v != "" {
 		cfg.UI.Theme = v
 	}
+	if v := os.Getenv("GREETDEEZ_WINDOW_SCALE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			cfg.Window.Scale = n
+		}
+	}
 	if v := os.Getenv("GREETDEEZ_DEBUG"); v != "" {
 		cfg.Debug = v == "true" || v == "1"
 	}
@@ -174,6 +183,102 @@ func parseResolution(s string) (int, int, bool) {
 		return 0, 0, false
 	}
 	return w, h, true
+}
+
+// detectDisplayScale reads EDID physical dimensions and the preferred mode
+// from the DRM subsystem to compute a whole-number scale factor.
+// Returns 1 when detection fails or the display is standard-DPI.
+func detectDisplayScale() int {
+	const baseDPI = 96.0
+
+	matches, _ := filepath.Glob("/sys/class/drm/card*-*/status")
+	for _, statusPath := range matches {
+		data, err := os.ReadFile(statusPath)
+		if err != nil || strings.TrimSpace(string(data)) != "connected" {
+			continue
+		}
+
+		dir := filepath.Dir(statusPath)
+
+		// Read preferred resolution from modes (first line).
+		modesData, err := os.ReadFile(filepath.Join(dir, "modes"))
+		if err != nil || len(modesData) == 0 {
+			continue
+		}
+		line, _, _ := strings.Cut(strings.TrimSpace(string(modesData)), "\n")
+		w, _, ok := parseResolution(line)
+		if !ok || w == 0 {
+			continue
+		}
+
+		// Read physical size from EDID bytes 21-22 (cm).
+		edid, err := os.ReadFile(filepath.Join(dir, "edid"))
+		if err != nil || len(edid) < 23 {
+			continue
+		}
+
+		// Validate EDID header: bytes 0-7 must be 00 FF FF FF FF FF FF 00
+		edidHeader := []byte{0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00}
+		if !bytesEqual(edid[:8], edidHeader) {
+			continue
+		}
+
+		widthCm := int(edid[21])
+		if widthCm == 0 {
+			// Some displays use detailed timing descriptors instead.
+			if dpi, ok := dpiFromDetailedTiming(edid, w); ok && dpi > 0 {
+				scale := int(math.Round(dpi / baseDPI))
+				if scale < 1 {
+					scale = 1
+				}
+				slog.Debug("detected display scale from EDID detailed timing", "dpi", int(dpi), "scale", scale, "source", dir)
+				return scale
+			}
+			continue
+		}
+
+		dpi := float64(w) / (float64(widthCm) / 2.54)
+		scale := int(math.Round(dpi / baseDPI))
+		if scale < 1 {
+			scale = 1
+		}
+		slog.Debug("detected display scale from EDID", "dpi", int(dpi), "widthCm", widthCm, "scale", scale, "source", dir)
+		return scale
+	}
+
+	return 1
+}
+
+// dpiFromDetailedTiming extracts physical width in mm from the first EDID
+// detailed timing descriptor (bytes 54-71) when the base EDID image size
+// fields are zero.
+func dpiFromDetailedTiming(edid []byte, hPixels int) (float64, bool) {
+	if len(edid) < 72 {
+		return 0, false
+	}
+	// Detailed timing descriptor starts at byte 54.
+	// Bytes 12-13 (absolute 66-67) encode horizontal/vertical image size in mm.
+	// Byte 14 (absolute 68) has upper nibbles for each.
+	hSizeLow := int(edid[66])
+	hSizeHigh := int(edid[68]&0xF0) >> 4
+	widthMm := (hSizeHigh << 8) | hSizeLow
+	if widthMm == 0 {
+		return 0, false
+	}
+	dpi := float64(hPixels) / (float64(widthMm) / 25.4)
+	return dpi, true
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Probes the host for the available power commands
