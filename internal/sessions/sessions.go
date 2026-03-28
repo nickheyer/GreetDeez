@@ -19,8 +19,7 @@ type Session struct {
 	Desktop string
 }
 
-// List discovers available desktop sessions by parsing .desktop entry files
-// from the configured session directories.
+// Discovers available desktop sessions by parsing .desktop entry files
 func List(dirs []config.SessionDir) []Session {
 	var out []Session
 
@@ -43,7 +42,7 @@ func List(dirs []config.SessionDir) []Session {
 		}
 	}
 
-	// Deduplicate: if two sessions share the same name+type, keep only the first.
+	// Dedup more than 1 session w/ same name+type, keep first
 	seen := make(map[[2]string]bool)
 	deduped := out[:0]
 	for _, s := range out {
@@ -156,15 +155,14 @@ func parseDesktopEntry(path, sessType string) (*Session, error) {
 // "(Wayland)", "(X11)", "(Xorg)", "(X.Org)", case-insensitive.
 var parenHintRe = regexp.MustCompile(`(?i)\s*\((wayland|x11|xorg|x\.org)\)\s*$`)
 
-// Strips redundant session-type hints from the display name.
+// Strips redundant session-type hints from the display name
 func cleanSessionName(name string) string {
 	name = strings.TrimSuffix(strings.TrimSuffix(name, " on Wayland"), " on Xorg")
 	name = parenHintRe.ReplaceAllString(name, "")
 	return strings.TrimSpace(name)
 }
 
-// parseExecString splits an Exec= value into arguments, respecting
-// double-quoted strings and backslash escapes (simple shlex-style).
+// Splits an Exec value into args, respecting "shlex"
 func parseExecString(s string) []string {
 	var args []string
 	var cur []byte

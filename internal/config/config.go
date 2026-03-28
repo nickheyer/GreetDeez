@@ -86,8 +86,7 @@ func Load(path string) (Config, error) {
 }
 
 func detectDefaults() Config {
-	w, h := detectDisplaySize()
-	scale := detectDisplayScale()
+	w, h, scale := detectDisplay()
 
 	return Config{
 		Window: WindowConfig{
@@ -151,22 +150,60 @@ func applyEnvOverrides(cfg *Config) {
 	}
 }
 
-// detectDisplaySize reads the preferred mode from the DRM subsystem.
-// Falls back to 1920x1080 if detection fails.
-func detectDisplaySize() (int, int) {
-	matches, _ := filepath.Glob("/sys/class/drm/card*-*/modes")
-	for _, p := range matches {
-		data, err := os.ReadFile(p)
-		if err != nil || len(data) == 0 {
+// Reads the connected display's native resolution and scale from DRM/EDID
+func detectDisplay() (width, height, scale int) {
+	matches, _ := filepath.Glob("/sys/class/drm/card*-*/status")
+	for _, statusPath := range matches {
+		data, err := os.ReadFile(statusPath)
+		if err != nil || strings.TrimSpace(string(data)) != "connected" {
 			continue
 		}
-		line, _, _ := strings.Cut(strings.TrimSpace(string(data)), "\n")
-		if w, h, ok := parseResolution(line); ok {
-			slog.Debug("detected display size from DRM", "width", w, "height", h, "source", p)
-			return w, h
+		dir := filepath.Dir(statusPath)
+
+		edid, err := os.ReadFile(filepath.Join(dir, "edid"))
+		if err != nil || len(edid) < 72 || !validEDIDHeader(edid) {
+			continue
 		}
+
+		// Prefer EDID preferred timing, fall back to modes file
+		w, h, ok := resolutionFromEDID(edid)
+		if !ok {
+			w, h, ok = resolutionFromModes(filepath.Join(dir, "modes"))
+		}
+		if !ok {
+			continue
+		}
+
+		s := scaleFromEDID(edid, w)
+
+		slog.Debug("detected display", "width", w, "height", h, "scale", s, "source", dir)
+		return w, h, s
 	}
-	return 1920, 1080
+
+	return 1920, 1080, 1
+}
+
+// Extracts native res from first EDID detailed timing descriptor (bytes 54-71)
+func resolutionFromEDID(edid []byte) (int, int, bool) {
+	if edid[54] == 0 && edid[55] == 0 {
+		return 0, 0, false
+	}
+	hActive := int(edid[58]>>4)<<8 | int(edid[56])
+	vActive := int(edid[61]>>4)<<8 | int(edid[59])
+	if hActive <= 0 || vActive <= 0 {
+		return 0, 0, false
+	}
+	return hActive, vActive, true
+}
+
+// Reads first line of DRM modes file as fallback when EDID timing is absent
+func resolutionFromModes(path string) (int, int, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return 0, 0, false
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(string(data)), "\n")
+	return parseResolution(line)
 }
 
 func parseResolution(s string) (int, int, bool) {
@@ -185,100 +222,32 @@ func parseResolution(s string) (int, int, bool) {
 	return w, h, true
 }
 
-// detectDisplayScale reads EDID physical dimensions and the preferred mode
-// from the DRM subsystem to compute a whole-number scale factor.
-// Returns 1 when detection fails or the display is standard-DPI.
-func detectDisplayScale() int {
+// Computes whole-number scale from EDID physical size (byte 21 cm, then timing mm)
+func scaleFromEDID(edid []byte, hPixels int) int {
 	const baseDPI = 96.0
 
-	matches, _ := filepath.Glob("/sys/class/drm/card*-*/status")
-	for _, statusPath := range matches {
-		data, err := os.ReadFile(statusPath)
-		if err != nil || strings.TrimSpace(string(data)) != "connected" {
-			continue
-		}
+	widthCm := int(edid[21])
+	if widthCm > 0 {
+		dpi := float64(hPixels) / (float64(widthCm) / 2.54)
+		return max(int(math.Round(dpi/baseDPI)), 1)
+	}
 
-		dir := filepath.Dir(statusPath)
-
-		// Read preferred resolution from modes (first line).
-		modesData, err := os.ReadFile(filepath.Join(dir, "modes"))
-		if err != nil || len(modesData) == 0 {
-			continue
-		}
-		line, _, _ := strings.Cut(strings.TrimSpace(string(modesData)), "\n")
-		w, _, ok := parseResolution(line)
-		if !ok || w == 0 {
-			continue
-		}
-
-		// Read physical size from EDID bytes 21-22 (cm).
-		edid, err := os.ReadFile(filepath.Join(dir, "edid"))
-		if err != nil || len(edid) < 23 {
-			continue
-		}
-
-		// Validate EDID header: bytes 0-7 must be 00 FF FF FF FF FF FF 00
-		edidHeader := []byte{0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00}
-		if !bytesEqual(edid[:8], edidHeader) {
-			continue
-		}
-
-		widthCm := int(edid[21])
-		if widthCm == 0 {
-			// Some displays use detailed timing descriptors instead.
-			if dpi, ok := dpiFromDetailedTiming(edid, w); ok && dpi > 0 {
-				scale := int(math.Round(dpi / baseDPI))
-				if scale < 1 {
-					scale = 1
-				}
-				slog.Debug("detected display scale from EDID detailed timing", "dpi", int(dpi), "scale", scale, "source", dir)
-				return scale
-			}
-			continue
-		}
-
-		dpi := float64(w) / (float64(widthCm) / 2.54)
-		scale := int(math.Round(dpi / baseDPI))
-		if scale < 1 {
-			scale = 1
-		}
-		slog.Debug("detected display scale from EDID", "dpi", int(dpi), "widthCm", widthCm, "scale", scale, "source", dir)
-		return scale
+	// Fallback: physical size in mm from detailed timing descriptor (bytes 66-68)
+	hSizeLow := int(edid[66])
+	hSizeHigh := int(edid[68]&0xF0) >> 4
+	widthMm := (hSizeHigh << 8) | hSizeLow
+	if widthMm > 0 {
+		dpi := float64(hPixels) / (float64(widthMm) / 25.4)
+		return max(int(math.Round(dpi/baseDPI)), 1)
 	}
 
 	return 1
 }
 
-// dpiFromDetailedTiming extracts physical width in mm from the first EDID
-// detailed timing descriptor (bytes 54-71) when the base EDID image size
-// fields are zero.
-func dpiFromDetailedTiming(edid []byte, hPixels int) (float64, bool) {
-	if len(edid) < 72 {
-		return 0, false
-	}
-	// Detailed timing descriptor starts at byte 54.
-	// Bytes 12-13 (absolute 66-67) encode horizontal/vertical image size in mm.
-	// Byte 14 (absolute 68) has upper nibbles for each.
-	hSizeLow := int(edid[66])
-	hSizeHigh := int(edid[68]&0xF0) >> 4
-	widthMm := (hSizeHigh << 8) | hSizeLow
-	if widthMm == 0 {
-		return 0, false
-	}
-	dpi := float64(hPixels) / (float64(widthMm) / 25.4)
-	return dpi, true
-}
-
-func bytesEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+func validEDIDHeader(edid []byte) bool {
+	return len(edid) >= 8 &&
+		edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF &&
+		edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00
 }
 
 // Probes the host for the available power commands

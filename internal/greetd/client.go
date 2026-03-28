@@ -107,7 +107,7 @@ func (c *Client) recv() (*Response, error) {
 	return &resp, nil
 }
 
-// roundTrip sends a message and reads the response with a context deadline.
+// Sends a message and reads the response with a context deadline
 func (c *Client) roundTrip(ctx context.Context, msg any) (*Response, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
@@ -124,7 +124,7 @@ func (c *Client) roundTrip(ctx context.Context, msg any) (*Response, error) {
 	return c.recv()
 }
 
-// CreateSession initiates authentication for the given username.
+// Starts Authentication for the given username
 func (c *Client) CreateSession(ctx context.Context, username string) (*Response, error) {
 	return c.roundTrip(ctx, createSessionRequest{
 		Type:     "create_session",
@@ -132,7 +132,7 @@ func (c *Client) CreateSession(ctx context.Context, username string) (*Response,
 	})
 }
 
-// PostAuthResponse sends the auth response (e.g. password) to greetd.
+// Sends the auth response to greetd
 func (c *Client) PostAuthResponse(ctx context.Context, response *string) (*Response, error) {
 	return c.roundTrip(ctx, postAuthResponse{
 		Type:     "post_auth_message_response",
@@ -140,8 +140,7 @@ func (c *Client) PostAuthResponse(ctx context.Context, response *string) (*Respo
 	})
 }
 
-// StartSession tells greetd to launch the user's session with the given command
-// and additional environment variables (e.g. XDG_SESSION_TYPE=wayland).
+// Tells greetd to launch the user's session with the given command and env
 func (c *Client) StartSession(ctx context.Context, cmd []string, env []string) (*Response, error) {
 	return c.roundTrip(ctx, startSessionRequest{
 		Type: "start_session",
@@ -150,21 +149,19 @@ func (c *Client) StartSession(ctx context.Context, cmd []string, env []string) (
 	})
 }
 
-// CancelSession cancels an in-progress authentication.
+// Cancels an in-progress auth
 func (c *Client) CancelSession(ctx context.Context) (*Response, error) {
 	return c.roundTrip(ctx, cancelSessionRequest{
 		Type: "cancel_session",
 	})
 }
 
-// AuthResult contains the outcome of an Authenticate call,
-// including any informational PAM messages collected during the flow.
+// Outcome of an Authenticate call
 type AuthResult struct {
 	Messages []string // non-secret auth messages (info, errors, MOTD, etc.)
 }
 
-// Authenticate handles the full create_session -> post_auth_response flow,
-// cancelling any stale session first. Returns collected PAM info messages on success.
+// The full create_session -> post_auth_response flow
 func (c *Client) Authenticate(ctx context.Context, username, password string) (*AuthResult, error) {
 	c.CancelSession(ctx)
 
@@ -183,7 +180,7 @@ func (c *Client) Authenticate(ctx context.Context, username, password string) (*
 		if resp.AuthMessageType != nil && *resp.AuthMessageType == "secret" {
 			reply = &password
 		} else if resp.AuthMessage != nil && *resp.AuthMessage != "" {
-			// Collect non-secret messages (info, visible prompts, MOTD, etc.)
+			// Collect messages (not secret)
 			messages = append(messages, *resp.AuthMessage)
 		}
 
