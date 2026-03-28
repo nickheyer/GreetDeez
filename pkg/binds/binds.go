@@ -6,7 +6,10 @@ package binds
 #include <webkit2/webkit2.h>
 */
 import "C"
-import "unsafe"
+import (
+	"math"
+	"unsafe"
+)
 
 // Fullscreens and chops browser deco
 func Fullscreen(gtkWindow unsafe.Pointer) {
@@ -16,13 +19,50 @@ func Fullscreen(gtkWindow unsafe.Pointer) {
 }
 
 // SetZoomLevel sets the page zoom on the WebKitWebView.
-// scale=2 means everything renders at 2× size.
-func SetZoomLevel(webkitWebView unsafe.Pointer, scale int) {
-	if scale <= 1 {
+// scale=2.0 means everything renders at 2× size.
+func SetZoomLevel(webkitWebView unsafe.Pointer, scale float64) {
+	if scale <= 1.0 {
 		return
 	}
 	wv := (*C.WebKitWebView)(webkitWebView)
 	C.webkit_web_view_set_zoom_level(wv, C.double(scale))
+}
+
+// DetectMonitorScale queries GDK for the physical dimensions and pixel geometry
+// of the monitor the window is currently on, and returns an appropriate scale.
+// Must be called from the GTK main thread after the window is mapped.
+func DetectMonitorScale(gtkWindow unsafe.Pointer) float64 {
+	const baseDPI = 96.0
+
+	win := (*C.GtkWidget)(gtkWindow)
+	gdkWin := C.gtk_widget_get_window(win)
+	if gdkWin == nil {
+		return 1.0
+	}
+	display := C.gdk_display_get_default()
+	if display == nil {
+		return 1.0
+	}
+	monitor := C.gdk_display_get_monitor_at_window(display, gdkWin)
+	if monitor == nil {
+		return 1.0
+	}
+
+	var geo C.GdkRectangle
+	C.gdk_monitor_get_geometry(monitor, &geo)
+	widthMm := int(C.gdk_monitor_get_width_mm(monitor))
+
+	if widthMm <= 0 || int(geo.width) <= 0 {
+		return 1.0
+	}
+
+	dpi := float64(geo.width) / (float64(widthMm) / 25.4)
+	ratio := dpi / baseDPI
+
+	if ratio >= 1.2 {
+		return math.Ceil(ratio)
+	}
+	return 1.0
 }
 
 // Banning browser features bad for greeter

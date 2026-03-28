@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -52,12 +52,6 @@ func main() {
 		navURL = fmt.Sprintf("http://%s", addr)
 	}
 
-	// Set GDK_SCALE before GTK initialises (affects X11 backend).
-	if cfg.Window.Scale > 1 {
-		os.Setenv("GDK_SCALE", strconv.Itoa(cfg.Window.Scale))
-		slog.Info("applied display scale", "scale", cfg.Window.Scale)
-	}
-
 	w := webview.New(*devMode)
 	defer w.Destroy()
 
@@ -67,7 +61,6 @@ func main() {
 	} else {
 		binds.Fullscreen(w.Window())
 		binds.HardenWebView(w.Widget())
-		binds.SetZoomLevel(w.Widget(), cfg.Window.Scale)
 		w.DisableContextMenu()
 	}
 
@@ -84,10 +77,22 @@ func main() {
 		w.Terminate()
 	}()
 
-	// Navigate to the real app on a goroutine so w.Run() can start the event loop.
+	configScale := cfg.Window.Scale
+
+	// Dispatch runs on the GTK main thread after the window is mapped,
+	// so we can query the actual monitor and apply the correct scale.
 	go func() {
-		slog.Info("navigating webview", "url", navURL)
 		w.Dispatch(func() {
+			if !*devMode {
+				// Runtime detection of the actual monitor we're displayed on.
+				detected := binds.DetectMonitorScale(w.Window())
+				scale := math.Max(configScale, detected)
+				if scale > 1 {
+					binds.SetZoomLevel(w.Widget(), scale)
+					slog.Info("applied display scale", "scale", scale, "config", configScale, "detected", detected)
+				}
+			}
+			slog.Info("navigating webview", "url", navURL)
 			w.Navigate(navURL)
 		})
 	}()

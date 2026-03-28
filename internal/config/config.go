@@ -30,10 +30,10 @@ type UIConfig struct {
 }
 
 type WindowConfig struct {
-	Title  string `toml:"title"`
-	Width  int    `toml:"width"`
-	Height int    `toml:"height"`
-	Scale  int    `toml:"scale"`
+	Title  string  `toml:"title"`
+	Width  int     `toml:"width"`
+	Height int     `toml:"height"`
+	Scale  float64 `toml:"scale"`
 }
 
 type AuthConfig struct {
@@ -141,7 +141,7 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.UI.Theme = v
 	}
 	if v := os.Getenv("GREETDEEZ_WINDOW_SCALE"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+		if n, err := strconv.ParseFloat(v, 64); err == nil && n >= 1 {
 			cfg.Window.Scale = n
 		}
 	}
@@ -150,9 +150,16 @@ func applyEnvOverrides(cfg *Config) {
 	}
 }
 
-// Reads the connected display's native resolution and scale from DRM/EDID
-func detectDisplay() (width, height, scale int) {
+// Reads connected displays and picks the highest-resolution one for scale detection.
+// This avoids picking a low-res secondary monitor when a HiDPI primary is present.
+func detectDisplay() (width, height int, scale float64) {
 	matches, _ := filepath.Glob("/sys/class/drm/card*-*/status")
+
+	bestW, bestH := 0, 0
+	bestScale := 1.0
+	bestPixels := 0
+	found := false
+
 	for _, statusPath := range matches {
 		data, err := os.ReadFile(statusPath)
 		if err != nil || strings.TrimSpace(string(data)) != "connected" {
@@ -165,7 +172,6 @@ func detectDisplay() (width, height, scale int) {
 			continue
 		}
 
-		// Prefer EDID preferred timing, fall back to modes file
 		w, h, ok := resolutionFromEDID(edid)
 		if !ok {
 			w, h, ok = resolutionFromModes(filepath.Join(dir, "modes"))
@@ -175,12 +181,19 @@ func detectDisplay() (width, height, scale int) {
 		}
 
 		s := scaleFromEDID(edid, w)
-
+		pixels := w * h
 		slog.Debug("detected display", "width", w, "height", h, "scale", s, "source", dir)
-		return w, h, s
+
+		if pixels > bestPixels {
+			bestW, bestH, bestScale, bestPixels = w, h, s, pixels
+			found = true
+		}
 	}
 
-	return 1920, 1080, 1
+	if found {
+		return bestW, bestH, bestScale
+	}
+	return 1920, 1080, 1.0
 }
 
 // Extracts native res from first EDID detailed timing descriptor (bytes 54-71)
@@ -222,26 +235,42 @@ func parseResolution(s string) (int, int, bool) {
 	return w, h, true
 }
 
-// Computes whole-number scale from EDID physical size (byte 21 cm, then timing mm)
-func scaleFromEDID(edid []byte, hPixels int) int {
+// Computes scale from EDID physical size (byte 21 cm, then timing mm).
+// Uses a 1.2× DPI-ratio threshold to trigger HiDPI scaling (matching GNOME behaviour).
+func scaleFromEDID(edid []byte, hPixels int) float64 {
 	const baseDPI = 96.0
+
+	dpiFromMm := func(widthMm int) float64 {
+		if widthMm <= 0 || hPixels <= 0 {
+			return 0
+		}
+		return float64(hPixels) / (float64(widthMm) / 25.4)
+	}
+
+	var dpi float64
 
 	widthCm := int(edid[21])
 	if widthCm > 0 {
-		dpi := float64(hPixels) / (float64(widthCm) / 2.54)
-		return max(int(math.Round(dpi/baseDPI)), 1)
+		dpi = dpiFromMm(widthCm * 10)
 	}
 
 	// Fallback: physical size in mm from detailed timing descriptor (bytes 66-68)
-	hSizeLow := int(edid[66])
-	hSizeHigh := int(edid[68]&0xF0) >> 4
-	widthMm := (hSizeHigh << 8) | hSizeLow
-	if widthMm > 0 {
-		dpi := float64(hPixels) / (float64(widthMm) / 25.4)
-		return max(int(math.Round(dpi/baseDPI)), 1)
+	if dpi == 0 {
+		hSizeLow := int(edid[66])
+		hSizeHigh := int(edid[68]&0xF0) >> 4
+		widthMm := (hSizeHigh << 8) | hSizeLow
+		dpi = dpiFromMm(widthMm)
 	}
 
-	return 1
+	if dpi == 0 {
+		return 1.0
+	}
+
+	ratio := dpi / baseDPI
+	if ratio >= 1.2 {
+		return math.Ceil(ratio)
+	}
+	return 1.0
 }
 
 func validEDIDHeader(edid []byte) bool {
