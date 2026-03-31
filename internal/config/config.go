@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"math"
 	"os"
@@ -160,29 +161,43 @@ func detectDisplay() (width, height int, scale float64) {
 	bestPixels := 0
 	found := false
 
+	slog.Info("EDID: scanning DRM connectors", "matches", len(matches))
+
 	for _, statusPath := range matches {
+		dir := filepath.Dir(statusPath)
+		connector := filepath.Base(dir)
 		data, err := os.ReadFile(statusPath)
 		if err != nil || strings.TrimSpace(string(data)) != "connected" {
+			slog.Info("EDID: connector not connected", "connector", connector)
 			continue
 		}
-		dir := filepath.Dir(statusPath)
 
 		edid, err := os.ReadFile(filepath.Join(dir, "edid"))
 		if err != nil || len(edid) < 72 || !validEDIDHeader(edid) {
+			slog.Warn("EDID: failed to read or invalid EDID", "connector", connector, "err", err, "len", len(edid))
 			continue
 		}
 
 		w, h, ok := resolutionFromEDID(edid)
 		if !ok {
+			slog.Info("EDID: no detailed timing, trying modes file", "connector", connector)
 			w, h, ok = resolutionFromModes(filepath.Join(dir, "modes"))
 		}
 		if !ok {
+			slog.Warn("EDID: could not determine resolution", "connector", connector)
 			continue
 		}
 
+		widthCm := int(edid[21])
+		heightCm := int(edid[22])
 		s := scaleFromEDID(edid, w)
 		pixels := w * h
-		slog.Debug("detected display", "width", w, "height", h, "scale", s, "source", dir)
+		slog.Info("EDID: detected display",
+			"connector", connector,
+			"resolution", fmt.Sprintf("%dx%d", w, h),
+			"physical_cm", fmt.Sprintf("%dx%d", widthCm, heightCm),
+			"scale", s,
+			"pixels", pixels)
 
 		if pixels > bestPixels {
 			bestW, bestH, bestScale, bestPixels = w, h, s, pixels
@@ -191,8 +206,11 @@ func detectDisplay() (width, height int, scale float64) {
 	}
 
 	if found {
+		slog.Info("EDID: selected display",
+			"width", bestW, "height", bestH, "scale", bestScale, "pixels", bestPixels)
 		return bestW, bestH, bestScale
 	}
+	slog.Warn("EDID: no connected displays found, using fallback 1920x1080 scale=1.0")
 	return 1920, 1080, 1.0
 }
 
@@ -252,6 +270,9 @@ func scaleFromEDID(edid []byte, hPixels int) float64 {
 	widthCm := int(edid[21])
 	if widthCm > 0 {
 		dpi = dpiFromMm(widthCm * 10)
+		slog.Info("EDID: scale from basic descriptor",
+			"width_cm", widthCm, "width_mm", widthCm*10,
+			"hPixels", hPixels, "dpi", fmt.Sprintf("%.1f", dpi))
 	}
 
 	// Fallback: physical size in mm from detailed timing descriptor (bytes 66-68)
@@ -260,17 +281,23 @@ func scaleFromEDID(edid []byte, hPixels int) float64 {
 		hSizeHigh := int(edid[68]&0xF0) >> 4
 		widthMm := (hSizeHigh << 8) | hSizeLow
 		dpi = dpiFromMm(widthMm)
+		slog.Info("EDID: scale from detailed timing descriptor",
+			"width_mm", widthMm, "hPixels", hPixels, "dpi", fmt.Sprintf("%.1f", dpi))
 	}
 
 	if dpi == 0 {
+		slog.Warn("EDID: could not compute DPI, returning scale=1.0")
 		return 1.0
 	}
 
 	ratio := dpi / baseDPI
+	result := 1.0
 	if ratio >= 1.2 {
-		return math.Ceil(ratio)
+		result = math.Ceil(ratio)
 	}
-	return 1.0
+	slog.Info("EDID: scale result",
+		"dpi", fmt.Sprintf("%.1f", dpi), "ratio", fmt.Sprintf("%.2f", ratio), "scale", result)
+	return result
 }
 
 func validEDIDHeader(edid []byte) bool {

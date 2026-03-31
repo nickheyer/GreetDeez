@@ -78,6 +78,8 @@ func main() {
 	}()
 
 	configScale := cfg.Window.Scale
+	slog.Info("scale from config/EDID detection", "configScale", configScale,
+		"width", cfg.Window.Width, "height", cfg.Window.Height)
 
 	// Dispatch runs on the GTK main thread after the window is mapped,
 	// so we can query the actual monitor and apply the correct scale.
@@ -87,9 +89,13 @@ func main() {
 				// Runtime detection of the actual monitor we're displayed on.
 				detected := binds.DetectMonitorScale(w.Window())
 				scale := math.Max(configScale, detected)
+				slog.Info("final scale decision",
+					"configScale", configScale, "gdkDetected", detected, "applied", scale)
 				if scale > 1 {
 					binds.SetZoomLevel(w.Widget(), scale)
-					slog.Info("applied display scale", "scale", scale, "config", configScale, "detected", detected)
+					slog.Info("called SetZoomLevel", "scale", scale)
+				} else {
+					slog.Warn("scale is <= 1, no zoom applied")
 				}
 			}
 			slog.Info("navigating webview", "url", navURL)
