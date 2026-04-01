@@ -27,6 +27,11 @@ import (
 )
 
 func main() {
+	logFile, err := os.OpenFile("/tmp/greetdeez.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err == nil {
+		slog.SetDefault(slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	}
+
 	devMode := flag.Bool("dev", false, "Enable dev mode (debug inspector, tolerate missing GREETD_SOCK)")
 	devUI := flag.String("dev-ui", "", "Navigate webview to this URL instead of embedded UI (e.g. http://localhost:5173)")
 	configPath := flag.String("config", config.DefaultConfigPath, "Path to config file")
