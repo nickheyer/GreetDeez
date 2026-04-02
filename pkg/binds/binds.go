@@ -4,6 +4,19 @@ package binds
 #cgo pkg-config: gtk+-3.0 webkit2gtk-4.1
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
+
+static void on_load_changed(WebKitWebView *wv, WebKitLoadEvent event, gpointer user_data) {
+    if (event == WEBKIT_LOAD_FINISHED) {
+        gdouble scale = *(gdouble *)user_data;
+        webkit_web_view_set_zoom_level(wv, scale);
+    }
+}
+
+static void set_zoom_on_load(WebKitWebView *wv, gdouble scale) {
+    gdouble *s = g_new(gdouble, 1);
+    *s = scale;
+    g_signal_connect(wv, "load-changed", G_CALLBACK(on_load_changed), s);
+}
 */
 import "C"
 import (
@@ -20,13 +33,14 @@ func Fullscreen(gtkWindow unsafe.Pointer) {
 }
 
 // SetZoomLevel sets the page zoom on the WebKitWebView.
-// scale=2.0 means everything renders at 2× size.
+// Connects to the load-changed signal so the zoom is applied
+// after each page load finishes (immediate calls get reset by navigation).
 func SetZoomLevel(webkitWebView unsafe.Pointer, scale float64) {
 	if scale <= 1.0 {
 		return
 	}
 	wv := (*C.WebKitWebView)(webkitWebView)
-	C.webkit_web_view_set_zoom_level(wv, C.double(scale))
+	C.set_zoom_on_load(wv, C.gdouble(scale))
 }
 
 // DetectMonitorScale queries GDK for the scale factor and physical dimensions

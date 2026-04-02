@@ -90,25 +90,22 @@ func main() {
 	// so we can query the actual monitor and apply the correct scale.
 	go func() {
 		w.Dispatch(func() {
-			var scale float64
 			if !*devMode {
 				// Runtime detection of the actual monitor we're displayed on.
 				detected := binds.DetectMonitorScale(w.Window())
-				scale = math.Max(configScale, detected)
+				scale := math.Max(configScale, detected)
 				slog.Info("final scale decision",
 					"configScale", configScale, "gdkDetected", detected, "applied", scale)
+				if scale > 1 {
+					// Register signal handler — zoom will be applied on each load-finished.
+					binds.SetZoomLevel(w.Widget(), scale)
+					slog.Info("registered zoom on load-changed", "scale", scale)
+				} else {
+					slog.Warn("scale is <= 1, no zoom applied")
+				}
 			}
-
 			slog.Info("navigating webview", "url", navURL)
 			w.Navigate(navURL)
-
-			// Apply zoom AFTER navigation — setting it before gets reset by the page load.
-			if scale > 1 {
-				binds.SetZoomLevel(w.Widget(), scale)
-				slog.Info("called SetZoomLevel", "scale", scale)
-			} else if !*devMode {
-				slog.Warn("scale is <= 1, no zoom applied")
-			}
 		})
 	}()
 
