@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -291,13 +290,8 @@ func scaleFromEDID(edid []byte, hPixels int) float64 {
 	}
 
 	ratio := dpi / baseDPI
-	result := 1.0
-	if ratio >= 1.2 {
-		result = math.Ceil(ratio)
-	}
-	slog.Info("EDID: scale result",
-		"dpi", fmt.Sprintf("%.1f", dpi), "ratio", fmt.Sprintf("%.2f", ratio), "scale", result)
-	return result
+	slog.Info("EDID: scale result", "dpi", fmt.Sprintf("%.1f", dpi), "ratio", fmt.Sprintf("%.2f", ratio), "scale", ratio)
+	return ratio
 }
 
 func validEDIDHeader(edid []byte) bool {

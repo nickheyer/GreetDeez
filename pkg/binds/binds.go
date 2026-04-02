@@ -9,7 +9,6 @@ import "C"
 import (
 	"fmt"
 	"log/slog"
-	"math"
 	"unsafe"
 )
 
@@ -79,10 +78,7 @@ func DetectMonitorScale(gtkWindow unsafe.Pointer) float64 {
 	ratio := dpi / baseDPI
 	slog.Info("scale detect: computed DPI", "dpi", fmt.Sprintf("%.1f", dpi), "ratio", fmt.Sprintf("%.2f", ratio))
 
-	if ratio >= 1.2 {
-		return math.Ceil(ratio)
-	}
-	return 1.0
+	return ratio
 }
 
 // Banning browser features bad for greeter
