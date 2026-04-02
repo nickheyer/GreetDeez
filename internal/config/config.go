@@ -30,10 +30,11 @@ type UIConfig struct {
 }
 
 type WindowConfig struct {
-	Title  string  `toml:"title"`
-	Width  int     `toml:"width"`
-	Height int     `toml:"height"`
-	Scale  float64 `toml:"scale"`
+	Title     string  `toml:"title"`
+	Width     int     `toml:"width"`
+	Height    int     `toml:"height"`
+	Scale     float64 `toml:"scale"`
+	Connector string  `toml:"connector"`
 }
 
 type AuthConfig struct {
@@ -86,14 +87,15 @@ func Load(path string) (Config, error) {
 }
 
 func detectDefaults() Config {
-	w, h, scale := detectDisplay()
+	w, h, scale, connector := detectDisplay()
 
 	return Config{
 		Window: WindowConfig{
-			Title:  "GreetDeez",
-			Width:  w,
-			Height: h,
-			Scale:  scale,
+			Title:     "GreetDeez",
+			Width:     w,
+			Height:    h,
+			Scale:     scale,
+			Connector: connector,
 		},
 		Auth: AuthConfig{
 			TimeoutSeconds: 30,
@@ -140,6 +142,9 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("GREETDEEZ_UI_THEME"); v != "" {
 		cfg.UI.Theme = v
 	}
+	if v := os.Getenv("GREETDEEZ_WINDOW_CONNECTOR"); v != "" {
+		cfg.Window.Connector = v
+	}
 	if v := os.Getenv("GREETDEEZ_WINDOW_SCALE"); v != "" {
 		if n, err := strconv.ParseFloat(v, 64); err == nil && n >= 1 {
 			cfg.Window.Scale = n
@@ -152,19 +157,20 @@ func applyEnvOverrides(cfg *Config) {
 
 // Reads connected displays and picks the highest-resolution one for scale detection.
 // This avoids picking a low-res secondary monitor when a HiDPI primary is present.
-func detectDisplay() (width, height int, scale float64) {
+func detectDisplay() (width, height int, scale float64, connector string) {
 	matches, _ := filepath.Glob("/sys/class/drm/card*-*/status")
 
 	bestW, bestH := 0, 0
 	bestScale := 1.0
 	bestPixels := 0
+	bestConnector := ""
 	found := false
 
 	slog.Info("EDID: scanning DRM connectors", "matches", len(matches))
 
 	for _, statusPath := range matches {
 		dir := filepath.Dir(statusPath)
-		connector := filepath.Base(dir)
+		connector := stripCardPrefix(filepath.Base(dir))
 		data, err := os.ReadFile(statusPath)
 		if err != nil || strings.TrimSpace(string(data)) != "connected" {
 			slog.Info("EDID: connector not connected", "connector", connector)
@@ -200,17 +206,19 @@ func detectDisplay() (width, height int, scale float64) {
 
 		if pixels > bestPixels {
 			bestW, bestH, bestScale, bestPixels = w, h, s, pixels
+			bestConnector = connector
 			found = true
 		}
 	}
 
 	if found {
 		slog.Info("EDID: selected display",
-			"width", bestW, "height", bestH, "scale", bestScale, "pixels", bestPixels)
-		return bestW, bestH, bestScale
+			"width", bestW, "height", bestH, "scale", bestScale,
+			"connector", bestConnector, "pixels", bestPixels)
+		return bestW, bestH, bestScale, bestConnector
 	}
 	slog.Warn("EDID: no connected displays found, using fallback 1920x1080 scale=1.0")
-	return 1920, 1080, 1.0
+	return 1920, 1080, 1.0, ""
 }
 
 // Extracts native res from first EDID detailed timing descriptor (bytes 54-71)
@@ -310,6 +318,17 @@ func detectStandbyCmd() []string {
 		return []string{"loginctl", "suspend"}
 	}
 	return nil
+}
+
+func stripCardPrefix(s string) string {
+	if !strings.HasPrefix(s, "card") {
+		return s
+	}
+	rest := s[4:]
+	if _, after, ok := strings.Cut(rest, "-"); ok {
+		return after
+	}
+	return s
 }
 
 func hasCmd(name string) bool {

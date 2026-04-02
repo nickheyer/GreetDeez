@@ -17,7 +17,7 @@ ui:
 
 # Dev
 dev:
-	cd ui/cyber && npm run dev
+	cd ui/minimal && npm run dev
 
 # Install
 DESTDIR ?=

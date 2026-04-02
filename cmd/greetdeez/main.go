@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -82,8 +81,7 @@ func main() {
 		w.Terminate()
 	}()
 
-	configScale := cfg.Window.Scale
-	slog.Info("scale from config/EDID detection", "configScale", configScale,
+	slog.Info("scale from config/EDID detection", "scale", cfg.Window.Scale,
 		"width", cfg.Window.Width, "height", cfg.Window.Height)
 
 	// Dispatch runs on the GTK main thread after the window is mapped,
@@ -91,18 +89,10 @@ func main() {
 	go func() {
 		w.Dispatch(func() {
 			if !*devMode {
-				// Runtime detection of the actual monitor we're displayed on.
-				detected := binds.DetectMonitorScale(w.Window())
-				scale := math.Max(configScale, detected)
 				slog.Info("final scale decision",
-					"configScale", configScale, "gdkDetected", detected, "applied", scale)
-				if scale > 1 {
-					// Register signal handler — zoom will be applied on each load-finished.
-					binds.SetZoomLevel(w.Widget(), scale)
-					slog.Info("registered zoom on load-changed", "scale", scale)
-				} else {
-					slog.Warn("scale is <= 1, no zoom applied")
-				}
+					"scale", cfg.Window.Scale)
+				binds.SetZoomLevel(w.Widget(), cfg.Window.Scale)
+				slog.Info("registered zoom on load-changed", "scale", cfg.Window.Scale)
 			}
 			slog.Info("navigating webview", "url", navURL)
 			w.Navigate(navURL)
