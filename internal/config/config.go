@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -87,15 +86,9 @@ func Load(path string) (Config, error) {
 }
 
 func detectDefaults() Config {
-	w, h, scale, connector := detectDisplay()
-
 	return Config{
 		Window: WindowConfig{
-			Title:     "GreetDeez",
-			Width:     w,
-			Height:    h,
-			Scale:     scale,
-			Connector: connector,
+			Title: "GreetDeez",
 		},
 		Auth: AuthConfig{
 			TimeoutSeconds: 30,
@@ -155,159 +148,6 @@ func applyEnvOverrides(cfg *Config) {
 	}
 }
 
-// Reads connected displays and picks the highest-resolution one for scale detection.
-// This avoids picking a low-res secondary monitor when a HiDPI primary is present.
-func detectDisplay() (width, height int, scale float64, connector string) {
-	matches, _ := filepath.Glob("/sys/class/drm/card*-*/status")
-
-	bestW, bestH := 0, 0
-	bestScale := 1.0
-	bestPixels := 0
-	bestConnector := ""
-	found := false
-
-	slog.Info("EDID: scanning DRM connectors", "matches", len(matches))
-
-	for _, statusPath := range matches {
-		dir := filepath.Dir(statusPath)
-		connector := stripCardPrefix(filepath.Base(dir))
-		data, err := os.ReadFile(statusPath)
-		if err != nil || strings.TrimSpace(string(data)) != "connected" {
-			slog.Info("EDID: connector not connected", "connector", connector)
-			continue
-		}
-
-		edid, err := os.ReadFile(filepath.Join(dir, "edid"))
-		if err != nil || len(edid) < 72 || !validEDIDHeader(edid) {
-			slog.Warn("EDID: failed to read or invalid EDID", "connector", connector, "err", err, "len", len(edid))
-			continue
-		}
-
-		w, h, ok := resolutionFromEDID(edid)
-		if !ok {
-			slog.Info("EDID: no detailed timing, trying modes file", "connector", connector)
-			w, h, ok = resolutionFromModes(filepath.Join(dir, "modes"))
-		}
-		if !ok {
-			slog.Warn("EDID: could not determine resolution", "connector", connector)
-			continue
-		}
-
-		widthCm := int(edid[21])
-		heightCm := int(edid[22])
-		s := scaleFromEDID(edid, w)
-		pixels := w * h
-		slog.Info("EDID: detected display",
-			"connector", connector,
-			"resolution", fmt.Sprintf("%dx%d", w, h),
-			"physical_cm", fmt.Sprintf("%dx%d", widthCm, heightCm),
-			"scale", s,
-			"pixels", pixels)
-
-		if pixels > bestPixels {
-			bestW, bestH, bestScale, bestPixels = w, h, s, pixels
-			bestConnector = connector
-			found = true
-		}
-	}
-
-	if found {
-		slog.Info("EDID: selected display",
-			"width", bestW, "height", bestH, "scale", bestScale,
-			"connector", bestConnector, "pixels", bestPixels)
-		return bestW, bestH, bestScale, bestConnector
-	}
-	slog.Warn("EDID: no connected displays found, using fallback 1920x1080 scale=1.0")
-	return 1920, 1080, 1.0, ""
-}
-
-// Extracts native res from first EDID detailed timing descriptor (bytes 54-71)
-func resolutionFromEDID(edid []byte) (int, int, bool) {
-	if edid[54] == 0 && edid[55] == 0 {
-		return 0, 0, false
-	}
-	hActive := int(edid[58]>>4)<<8 | int(edid[56])
-	vActive := int(edid[61]>>4)<<8 | int(edid[59])
-	if hActive <= 0 || vActive <= 0 {
-		return 0, 0, false
-	}
-	return hActive, vActive, true
-}
-
-// Reads first line of DRM modes file as fallback when EDID timing is absent
-func resolutionFromModes(path string) (int, int, bool) {
-	data, err := os.ReadFile(path)
-	if err != nil || len(data) == 0 {
-		return 0, 0, false
-	}
-	line, _, _ := strings.Cut(strings.TrimSpace(string(data)), "\n")
-	return parseResolution(line)
-}
-
-func parseResolution(s string) (int, int, bool) {
-	ws, hs, ok := strings.Cut(s, "x")
-	if !ok {
-		return 0, 0, false
-	}
-	w, err := strconv.Atoi(ws)
-	if err != nil || w <= 0 {
-		return 0, 0, false
-	}
-	h, err := strconv.Atoi(hs)
-	if err != nil || h <= 0 {
-		return 0, 0, false
-	}
-	return w, h, true
-}
-
-// Computes scale from EDID physical size (byte 21 cm, then timing mm).
-// Uses a 1.2× DPI-ratio threshold to trigger HiDPI scaling (matching GNOME behaviour).
-func scaleFromEDID(edid []byte, hPixels int) float64 {
-	const baseDPI = 96.0
-
-	dpiFromMm := func(widthMm int) float64 {
-		if widthMm <= 0 || hPixels <= 0 {
-			return 0
-		}
-		return float64(hPixels) / (float64(widthMm) / 25.4)
-	}
-
-	var dpi float64
-
-	widthCm := int(edid[21])
-	if widthCm > 0 {
-		dpi = dpiFromMm(widthCm * 10)
-		slog.Info("EDID: scale from basic descriptor",
-			"width_cm", widthCm, "width_mm", widthCm*10,
-			"hPixels", hPixels, "dpi", fmt.Sprintf("%.1f", dpi))
-	}
-
-	// Fallback: physical size in mm from detailed timing descriptor (bytes 66-68)
-	if dpi == 0 {
-		hSizeLow := int(edid[66])
-		hSizeHigh := int(edid[68]&0xF0) >> 4
-		widthMm := (hSizeHigh << 8) | hSizeLow
-		dpi = dpiFromMm(widthMm)
-		slog.Info("EDID: scale from detailed timing descriptor",
-			"width_mm", widthMm, "hPixels", hPixels, "dpi", fmt.Sprintf("%.1f", dpi))
-	}
-
-	if dpi == 0 {
-		slog.Warn("EDID: could not compute DPI, returning scale=1.0")
-		return 1.0
-	}
-
-	ratio := dpi / baseDPI
-	slog.Info("EDID: scale result", "dpi", fmt.Sprintf("%.1f", dpi), "ratio", fmt.Sprintf("%.2f", ratio), "scale", ratio)
-	return ratio
-}
-
-func validEDIDHeader(edid []byte) bool {
-	return len(edid) >= 8 &&
-		edid[0] == 0x00 && edid[1] == 0xFF && edid[2] == 0xFF && edid[3] == 0xFF &&
-		edid[4] == 0xFF && edid[5] == 0xFF && edid[6] == 0xFF && edid[7] == 0x00
-}
-
 // Probes the host for the available power commands
 func detectStandbyCmd() []string {
 
@@ -318,17 +158,6 @@ func detectStandbyCmd() []string {
 		return []string{"loginctl", "suspend"}
 	}
 	return nil
-}
-
-func stripCardPrefix(s string) string {
-	if !strings.HasPrefix(s, "card") {
-		return s
-	}
-	rest := s[4:]
-	if _, after, ok := strings.Cut(rest, "-"); ok {
-		return after
-	}
-	return s
 }
 
 func hasCmd(name string) bool {

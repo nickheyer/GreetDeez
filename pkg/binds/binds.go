@@ -4,6 +4,8 @@ package binds
 #cgo pkg-config: gtk+-3.0 webkit2gtk-4.1
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
+#include <string.h>
+#include <dlfcn.h>
 
 static void on_load_changed(WebKitWebView *wv, WebKitLoadEvent event, gpointer user_data) {
     if (event == WEBKIT_LOAD_FINISHED) {
@@ -17,13 +19,98 @@ static void set_zoom_on_load(WebKitWebView *wv, gdouble scale) {
     *s = scale;
     g_signal_connect(wv, "load-changed", G_CALLBACK(on_load_changed), s);
 }
+
+// gdk_monitor_get_connector exists since GTK 3.22 but header version guards
+// can hide the declaration. Look it up at runtime to avoid compile errors.
+typedef const char* (*gdk_monitor_get_connector_fn)(GdkMonitor*);
+static const char* try_get_connector(GdkMonitor *mon) {
+    static gdk_monitor_get_connector_fn fn = NULL;
+    static gboolean resolved = FALSE;
+    if (!resolved) {
+        fn = (gdk_monitor_get_connector_fn)dlsym(RTLD_DEFAULT,
+                                                  "gdk_monitor_get_connector");
+        resolved = TRUE;
+    }
+    return fn ? fn(mon) : NULL;
+}
+
+static int get_n_monitors(void) {
+    GdkDisplay *d = gdk_display_get_default();
+    return d ? gdk_display_get_n_monitors(d) : 0;
+}
+
+static void get_monitor_info(int idx, int *width, int *height,
+                             int *width_mm, int *height_mm,
+                             char *connector_out, int buf_size) {
+    connector_out[0] = '\0';
+    *width = 0; *height = 0; *width_mm = 0; *height_mm = 0;
+    GdkDisplay *d = gdk_display_get_default();
+    if (!d) return;
+    int n = gdk_display_get_n_monitors(d);
+    if (idx < 0 || idx >= n) return;
+    GdkMonitor *mon = gdk_display_get_monitor(d, idx);
+    GdkRectangle geo;
+    gdk_monitor_get_geometry(mon, &geo);
+    *width = geo.width;
+    *height = geo.height;
+    *width_mm = gdk_monitor_get_width_mm(mon);
+    *height_mm = gdk_monitor_get_height_mm(mon);
+    const char *conn = try_get_connector(mon);
+    if (conn) {
+        strncpy(connector_out, conn, buf_size - 1);
+        connector_out[buf_size - 1] = '\0';
+    }
+}
+
+static void fullscreen_on_monitor_idx(GtkWindow *win, int idx) {
+    gtk_window_set_decorated(win, FALSE);
+    GdkScreen *screen = gtk_window_get_screen(win);
+    gtk_window_fullscreen_on_monitor(win, screen, idx);
+}
 */
 import "C"
 import (
 	"unsafe"
 )
 
-// Fullscreens and chops browser deco
+// MonitorInfo holds information about a GDK monitor from the running compositor.
+type MonitorInfo struct {
+	Index     int
+	Width     int
+	Height    int
+	WidthMM   int
+	HeightMM  int
+	Connector string
+}
+
+// EnumerateMonitors returns all monitors visible to the compositor via GDK.
+// Must be called after GTK is initialized (after webview.New).
+func EnumerateMonitors() []MonitorInfo {
+	n := int(C.get_n_monitors())
+	monitors := make([]MonitorInfo, 0, n)
+	for i := 0; i < n; i++ {
+		var w, h, wmm, hmm C.int
+		var conn [64]C.char
+		C.get_monitor_info(C.int(i), &w, &h, &wmm, &hmm, &conn[0], 64)
+		monitors = append(monitors, MonitorInfo{
+			Index:     i,
+			Width:     int(w),
+			Height:    int(h),
+			WidthMM:   int(wmm),
+			HeightMM:  int(hmm),
+			Connector: C.GoString(&conn[0]),
+		})
+	}
+	return monitors
+}
+
+// FullscreenOnMonitor fullscreens the window on the GDK monitor at the given index.
+func FullscreenOnMonitor(gtkWindow unsafe.Pointer, idx int) {
+	win := (*C.GtkWindow)(gtkWindow)
+	C.fullscreen_on_monitor_idx(win, C.int(idx))
+}
+
+// Fullscreen fullscreens the window on the default monitor.
 func Fullscreen(gtkWindow unsafe.Pointer) {
 	win := (*C.GtkWindow)(gtkWindow)
 	C.gtk_window_set_decorated(win, C.FALSE)

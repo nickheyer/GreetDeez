@@ -63,7 +63,7 @@ func main() {
 		w.SetTitle("GreetDeez [dev]")
 		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
 	} else {
-		binds.Fullscreen(w.Window())
+		setupDisplay(w, &cfg)
 		binds.HardenWebView(w.Widget())
 		w.DisableContextMenu()
 	}
@@ -81,18 +81,12 @@ func main() {
 		w.Terminate()
 	}()
 
-	slog.Info("scale from config/EDID detection", "scale", cfg.Window.Scale,
-		"width", cfg.Window.Width, "height", cfg.Window.Height)
-
-	// Dispatch runs on the GTK main thread after the window is mapped,
-	// so we can query the actual monitor and apply the correct scale.
+	// Dispatch runs on the GTK main thread after the window is mapped.
 	go func() {
 		w.Dispatch(func() {
 			if !*devMode {
-				slog.Info("final scale decision",
-					"scale", cfg.Window.Scale)
+				slog.Info("applying zoom", "scale", cfg.Window.Scale)
 				binds.SetZoomLevel(w.Widget(), cfg.Window.Scale)
-				slog.Info("registered zoom on load-changed", "scale", cfg.Window.Scale)
 			}
 			slog.Info("navigating webview", "url", navURL)
 			w.Navigate(navURL)
@@ -209,4 +203,71 @@ func serveUI(fsys http.FileSystem) (string, error) {
 
 	slog.Info("serving UI", "addr", listener.Addr().String())
 	return listener.Addr().String(), nil
+}
+
+// Queries GDK for the monitors the compositor actually has active
+func setupDisplay(w webview.WebView, cfg *config.Config) {
+	monitors := binds.EnumerateMonitors()
+
+	for _, m := range monitors {
+		slog.Info("GDK: monitor", "idx", m.Index, "connector", m.Connector,
+			"resolution", fmt.Sprintf("%dx%d", m.Width, m.Height),
+			"physical_mm", fmt.Sprintf("%dx%d", m.WidthMM, m.HeightMM))
+	}
+
+	target := selectBestMonitor(monitors, cfg.Window.Connector)
+	if target == nil {
+		slog.Warn("GDK: no monitors found, falling back to default fullscreen")
+		binds.Fullscreen(w.Window())
+		return
+	}
+
+	slog.Info("GDK: targeting monitor", "connector", target.Connector,
+		"resolution", fmt.Sprintf("%dx%d", target.Width, target.Height))
+	binds.FullscreenOnMonitor(w.Window(), target.Index)
+
+	// Recompute scale from the actual monitor's physical dimensions
+	if gdkScale := computeScale(target.Width, target.WidthMM); gdkScale > 1.0 {
+		cfg.Window.Scale = gdkScale
+		slog.Info("GDK: scale from monitor", "scale", gdkScale)
+	} else {
+		slog.Info("GDK: keeping EDID scale", "scale", cfg.Window.Scale)
+	}
+}
+
+func selectBestMonitor(monitors []binds.MonitorInfo, preferredConnector string) *binds.MonitorInfo {
+	if len(monitors) == 0 {
+		return nil
+	}
+
+	// Try connector match first
+	if preferredConnector != "" {
+		for i := range monitors {
+			if monitors[i].Connector == preferredConnector {
+				return &monitors[i]
+			}
+		}
+		slog.Warn("GDK: preferred connector not found in compositor", "connector", preferredConnector)
+	}
+
+	// Fallback to highest pixel count
+	best := &monitors[0]
+	for i := 1; i < len(monitors); i++ {
+		if monitors[i].Width*monitors[i].Height > best.Width*best.Height {
+			best = &monitors[i]
+		}
+	}
+	return best
+}
+
+func computeScale(widthPx, widthMM int) float64 {
+	if widthPx <= 0 || widthMM <= 0 {
+		return 1.0
+	}
+	dpi := float64(widthPx) / (float64(widthMM) / 25.4)
+	ratio := dpi / 96.0
+	if ratio < 1.2 {
+		return 1.0
+	}
+	return ratio
 }
