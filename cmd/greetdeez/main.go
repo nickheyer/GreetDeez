@@ -63,7 +63,7 @@ func main() {
 		w.SetTitle("GreetDeez [dev]")
 		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
 	} else {
-		setupDisplay(w, &cfg)
+		setupDisplay(w)
 		binds.HardenWebView(w.Widget())
 		w.DisableContextMenu()
 	}
@@ -81,13 +81,8 @@ func main() {
 		w.Terminate()
 	}()
 
-	// Dispatch runs on the GTK main thread after the window is mapped.
 	go func() {
 		w.Dispatch(func() {
-			if !*devMode {
-				slog.Info("applying zoom", "scale", cfg.Window.Scale)
-				binds.SetZoomLevel(w.Widget(), cfg.Window.Scale)
-			}
 			slog.Info("navigating webview", "url", navURL)
 			w.Navigate(navURL)
 		})
@@ -206,7 +201,7 @@ func serveUI(fsys http.FileSystem) (string, error) {
 }
 
 // Queries GDK for the monitors the compositor actually has active
-func setupDisplay(w webview.WebView, cfg *config.Config) {
+func setupDisplay(w webview.WebView) {
 	monitors := binds.EnumerateMonitors()
 
 	for _, m := range monitors {
@@ -215,7 +210,7 @@ func setupDisplay(w webview.WebView, cfg *config.Config) {
 			"physical_mm", fmt.Sprintf("%dx%d", m.WidthMM, m.HeightMM))
 	}
 
-	target := selectBestMonitor(monitors, cfg.Window.Connector)
+	target := selectBestMonitor(monitors)
 	if target == nil {
 		slog.Warn("GDK: no monitors found, falling back to default fullscreen")
 		binds.Fullscreen(w.Window())
@@ -225,32 +220,13 @@ func setupDisplay(w webview.WebView, cfg *config.Config) {
 	slog.Info("GDK: targeting monitor", "connector", target.Connector,
 		"resolution", fmt.Sprintf("%dx%d", target.Width, target.Height))
 	binds.FullscreenOnMonitor(w.Window(), target.Index)
-
-	// Recompute scale from the actual monitor's physical dimensions
-	if gdkScale := computeScale(target.Width, target.WidthMM); gdkScale > 1.0 {
-		cfg.Window.Scale = gdkScale
-		slog.Info("GDK: scale from monitor", "scale", gdkScale)
-	} else {
-		slog.Info("GDK: keeping EDID scale", "scale", cfg.Window.Scale)
-	}
 }
 
-func selectBestMonitor(monitors []binds.MonitorInfo, preferredConnector string) *binds.MonitorInfo {
+func selectBestMonitor(monitors []binds.MonitorInfo) *binds.MonitorInfo {
 	if len(monitors) == 0 {
 		return nil
 	}
 
-	// Try connector match first
-	if preferredConnector != "" {
-		for i := range monitors {
-			if monitors[i].Connector == preferredConnector {
-				return &monitors[i]
-			}
-		}
-		slog.Warn("GDK: preferred connector not found in compositor", "connector", preferredConnector)
-	}
-
-	// Fallback to highest pixel count
 	best := &monitors[0]
 	for i := 1; i < len(monitors); i++ {
 		if monitors[i].Width*monitors[i].Height > best.Width*best.Height {
@@ -258,16 +234,4 @@ func selectBestMonitor(monitors []binds.MonitorInfo, preferredConnector string) 
 		}
 	}
 	return best
-}
-
-func computeScale(widthPx, widthMM int) float64 {
-	if widthPx <= 0 || widthMM <= 0 {
-		return 1.0
-	}
-	dpi := float64(widthPx) / (float64(widthMM) / 25.4)
-	ratio := dpi / 96.0
-	if ratio < 1.2 {
-		return 1.0
-	}
-	return ratio
 }

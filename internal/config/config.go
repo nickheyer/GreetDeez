@@ -29,11 +29,9 @@ type UIConfig struct {
 }
 
 type WindowConfig struct {
-	Title     string  `toml:"title"`
-	Width     int     `toml:"width"`
-	Height    int     `toml:"height"`
-	Scale     float64 `toml:"scale"`
-	Connector string  `toml:"connector"`
+	Title  string `toml:"title"`
+	Width  int    `toml:"width"`
+	Height int    `toml:"height"`
 }
 
 type AuthConfig struct {
@@ -134,14 +132,6 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("GREETDEEZ_UI_THEME"); v != "" {
 		cfg.UI.Theme = v
-	}
-	if v := os.Getenv("GREETDEEZ_WINDOW_CONNECTOR"); v != "" {
-		cfg.Window.Connector = v
-	}
-	if v := os.Getenv("GREETDEEZ_WINDOW_SCALE"); v != "" {
-		if n, err := strconv.ParseFloat(v, 64); err == nil && n >= 1 {
-			cfg.Window.Scale = n
-		}
 	}
 	if v := os.Getenv("GREETDEEZ_DEBUG"); v != "" {
 		cfg.Debug = v == "true" || v == "1"

@@ -16,8 +16,8 @@ ui:
 	go generate ./ui/...
 
 # Dev
-dev:
-	cd ui/minimal && npm run dev
+dev: build
+	cage -s -- ./bin/greetdeez -dev
 
 # Install
 DESTDIR ?=

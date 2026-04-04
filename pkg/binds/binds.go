@@ -7,19 +7,6 @@ package binds
 #include <string.h>
 #include <dlfcn.h>
 
-static void on_load_changed(WebKitWebView *wv, WebKitLoadEvent event, gpointer user_data) {
-    if (event == WEBKIT_LOAD_FINISHED) {
-        gdouble scale = *(gdouble *)user_data;
-        webkit_web_view_set_zoom_level(wv, scale);
-    }
-}
-
-static void set_zoom_on_load(WebKitWebView *wv, gdouble scale) {
-    gdouble *s = g_new(gdouble, 1);
-    *s = scale;
-    g_signal_connect(wv, "load-changed", G_CALLBACK(on_load_changed), s);
-}
-
 // gdk_monitor_get_connector exists since GTK 3.22 but header version guards
 // can hide the declaration. Look it up at runtime to avoid compile errors.
 typedef const char* (*gdk_monitor_get_connector_fn)(GdkMonitor*);
@@ -115,17 +102,6 @@ func Fullscreen(gtkWindow unsafe.Pointer) {
 	win := (*C.GtkWindow)(gtkWindow)
 	C.gtk_window_set_decorated(win, C.FALSE)
 	C.gtk_window_fullscreen(win)
-}
-
-// SetZoomLevel sets the page zoom on the WebKitWebView.
-// Connects to the load-changed signal so the zoom is applied
-// after each page load finishes (immediate calls get reset by navigation).
-func SetZoomLevel(webkitWebView unsafe.Pointer, scale float64) {
-	if scale <= 1.0 {
-		return
-	}
-	wv := (*C.WebKitWebView)(webkitWebView)
-	C.set_zoom_on_load(wv, C.gdouble(scale))
 }
 
 // Banning browser features bad for greeter
