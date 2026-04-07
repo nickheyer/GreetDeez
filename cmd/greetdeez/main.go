@@ -63,7 +63,7 @@ func main() {
 		w.SetTitle("GreetDeez [dev]")
 		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
 	} else {
-		setupDisplay(w)
+		//setupDisplay(w)
 		binds.HardenWebView(w.Widget())
 		w.DisableContextMenu()
 	}
