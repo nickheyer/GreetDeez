@@ -60,13 +60,13 @@ nfpms:
       postinstall: packaging/scripts/post-install.sh
     overrides:
       deb:
-        dependencies: [greetd, libwebkit2gtk-4.1-0, cage]
+        dependencies: [greetd, libwebkit2gtk-4.1-0, cage, wlr-randr]
       rpm:
-        dependencies: [greetd, webkit2gtk4.1, cage]
+        dependencies: [greetd, webkit2gtk4.1, cage, wlr-randr]
       archlinux:
-        dependencies: [greetd, webkit2gtk-4.1, cage]
+        dependencies: [greetd, webkit2gtk-4.1, cage, wlr-randr]
       apk:
-        dependencies: [greetd, webkit2gtk-4.1, cage]
+        dependencies: [greetd, webkit2gtk-4.1, cage, wlr-randr]
 
 aurs:
   - name: greetdeez-bin
@@ -78,7 +78,7 @@ aurs:
     private_key: "{{ .Env.AUR_KEY }}"
     git_url: "ssh://aur@aur.archlinux.org/greetdeez-bin.git"
     skip_upload: '{{ if .Env.AUR_KEY }}auto{{ else }}true{{ end }}'
-    depends: [greetd, webkit2gtk-4.1, cage]
+    depends: [greetd, webkit2gtk-4.1, cage, wlr-randr]
     provides: [greetdeez]
     conflicts: [greetdeez]
     backup:

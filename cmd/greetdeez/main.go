@@ -17,9 +17,9 @@ import (
 
 	greetdeezv1 "github.com/nickheyer/greetdeez/gen/go/greetdeez/v1"
 	"github.com/nickheyer/greetdeez/internal/config"
+	"github.com/nickheyer/greetdeez/internal/display"
 	"github.com/nickheyer/greetdeez/internal/greetd"
 	"github.com/nickheyer/greetdeez/internal/server"
-	"github.com/nickheyer/greetdeez/pkg/binds"
 	"github.com/nickheyer/greetdeez/pkg/rpc"
 	"github.com/nickheyer/greetdeez/pkg/webview"
 	uipkg "github.com/nickheyer/greetdeez/ui"
@@ -40,6 +40,13 @@ func main() {
 
 	client := connectGreetd(*devMode)
 	defer client.Close()
+
+	// Fix cage's missing output scale BEFORE GTK init.
+	// Cage never sets wl_output.scale, so it defaults to 1 on DRM.
+	// We use wlr-randr to set it via the wlr-output-management protocol.
+	if !*devMode {
+		display.ConfigureOutputScale()
+	}
 
 	navURL := *devUI
 	if navURL == "" {
@@ -63,9 +70,8 @@ func main() {
 		w.SetTitle("GreetDeez [dev]")
 		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
 	} else {
-		//setupDisplay(w)
-		binds.HardenWebView(w.Widget())
-		w.DisableContextMenu()
+		display.Setup(w)
+		display.Harden(w)
 	}
 
 	srv := server.New(client, &cfg)
@@ -198,40 +204,4 @@ func serveUI(fsys http.FileSystem) (string, error) {
 
 	slog.Info("serving UI", "addr", listener.Addr().String())
 	return listener.Addr().String(), nil
-}
-
-// Queries GDK for the monitors the compositor actually has active
-func setupDisplay(w webview.WebView) {
-	monitors := binds.EnumerateMonitors()
-
-	for _, m := range monitors {
-		slog.Info("GDK: monitor", "idx", m.Index, "connector", m.Connector,
-			"resolution", fmt.Sprintf("%dx%d", m.Width, m.Height),
-			"physical_mm", fmt.Sprintf("%dx%d", m.WidthMM, m.HeightMM))
-	}
-
-	target := selectBestMonitor(monitors)
-	if target == nil {
-		slog.Warn("GDK: no monitors found, falling back to default fullscreen")
-		binds.Fullscreen(w.Window())
-		return
-	}
-
-	slog.Info("GDK: targeting monitor", "connector", target.Connector,
-		"resolution", fmt.Sprintf("%dx%d", target.Width, target.Height))
-	binds.FullscreenOnMonitor(w.Window(), target.Index)
-}
-
-func selectBestMonitor(monitors []binds.MonitorInfo) *binds.MonitorInfo {
-	if len(monitors) == 0 {
-		return nil
-	}
-
-	best := &monitors[0]
-	for i := 1; i < len(monitors); i++ {
-		if monitors[i].Width*monitors[i].Height > best.Width*best.Height {
-			best = &monitors[i]
-		}
-	}
-	return best
 }
