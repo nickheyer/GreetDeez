@@ -34,7 +34,7 @@ func main() {
 
 	devMode := flag.Bool("dev", false, "Enable dev mode (debug inspector, tolerate missing GREETD_SOCK)")
 	devUI := flag.String("dev-ui", "", "Navigate webview to this URL instead of embedded UI (e.g. http://localhost:5173)")
-	configPath := flag.String("config", config.DefaultConfigPath, "Path to config file")
+	configPath := flag.String("config", config.DefaultConfigPath(), "Path to config file")
 	flag.Parse()
 
 	cfg := loadConfig(*configPath)
@@ -43,7 +43,7 @@ func main() {
 	defer client.Close()
 
 	if !*devMode { // set wayland scaling via wlr protocol
-		binds.ConfigureOutputScale()
+		binds.ConfigureOutputScale(cfg.Window.Scale)
 	}
 
 	navURL := *devUI

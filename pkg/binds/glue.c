@@ -122,30 +122,14 @@ static const struct wl_registry_listener reg_listener = {
     .global = reg_global, .global_remove = reg_remove,
 };
 
-/* helper: get pixel width for a head from its current or preferred mode */
-static int head_pixel_width(struct head_info *hi) {
-    for (int j = 0; j < hi->n_modes; j++)
-        if (hi->modes[j].wl_mode == hi->current_mode) return hi->modes[j].width;
-    for (int j = 0; j < hi->n_modes; j++)
-        if (hi->modes[j].preferred) return hi->modes[j].width;
-    return 0;
-}
-
-/* helper: compute scale from physical mm and pixel width */
-static double compute_scale(int px_width, int phys_mm) {
-    double dpi = (double)px_width / ((double)phys_mm / 25.4);
-    double scale = round((dpi / 96.0) * 4.0) / 4.0;
-    if (scale < 1.0) scale = 1.0;
-    if (scale > 3.0) scale = 3.0;
-    return scale;
-}
-
 /*
  * configure_output_scale: connect to the compositor via wlr-output-management
- * protocol, detect DPI from physical size + resolution, and set appropriate
- * scale. Returns 1 on success, 0 if nothing to do, negative on error.
+ * protocol and set the given scale on all enabled outputs.
+ * Returns 1 on success, 0 if nothing to do, negative on error.
  */
-int configure_output_scale(void) {
+int configure_output_scale(double scale) {
+    if (scale <= 0.0) return 0;
+
     memset(&S, 0, sizeof(S));
 
     S.display = wl_display_connect(NULL);
@@ -170,22 +154,6 @@ int configure_output_scale(void) {
         return 0;
     }
 
-    /* check if any head needs a scale change */
-    int needs = 0;
-    for (int i = 0; i < S.n_heads; i++) {
-        struct head_info *hi = &S.heads[i];
-        if (!hi->enabled || hi->phys_width_mm <= 0) continue;
-        int pw = head_pixel_width(hi);
-        if (pw > 0 && compute_scale(pw, hi->phys_width_mm) > 1.0) { needs = 1; break; }
-    }
-
-    if (!needs) {
-        zwlr_output_manager_v1_destroy(S.manager);
-        wl_registry_destroy(S.registry);
-        wl_display_disconnect(S.display);
-        return 0;
-    }
-
     struct zwlr_output_configuration_v1 *cfg =
         zwlr_output_manager_v1_create_configuration(S.manager, S.serial);
     zwlr_output_configuration_v1_add_listener(cfg, &cfg_listener, NULL);
@@ -203,11 +171,7 @@ int configure_output_scale(void) {
         if (hi->current_mode)
             zwlr_output_configuration_head_v1_set_mode(ch, hi->current_mode);
 
-        int pw = head_pixel_width(hi);
-        if (pw > 0 && hi->phys_width_mm > 0) {
-            double scale = compute_scale(pw, hi->phys_width_mm);
-            zwlr_output_configuration_head_v1_set_scale(ch, wl_fixed_from_double(scale));
-        }
+        zwlr_output_configuration_head_v1_set_scale(ch, wl_fixed_from_double(scale));
     }
 
     zwlr_output_configuration_v1_apply(cfg);

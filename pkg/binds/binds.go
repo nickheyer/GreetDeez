@@ -9,7 +9,7 @@ package binds
 #include <string.h>
 #include <dlfcn.h>
 
-extern int configure_output_scale(void);
+extern int configure_output_scale(double scale);
 
 // gdk_monitor_get_connector exists since GTK 3.22 but header version guards
 // can hide the declaration. Look it up at runtime to avoid compile errors.
@@ -109,12 +109,18 @@ func Fullscreen(gtkWindow unsafe.Pointer) {
 	C.gtk_window_fullscreen(win)
 }
 
-// Connects to the compositor via wlr-output-management - Call BEFORE webview.New().
-func ConfigureOutputScale() {
-	rc := int(C.configure_output_scale())
+// ConfigureOutputScale sets the wlr output scale on all enabled heads.
+// Pass the exact scale you want (e.g. 1.25). If scale <= 0, this is a no-op.
+// Call BEFORE webview.New().
+func ConfigureOutputScale(scale float64) {
+	if scale <= 0 {
+		slog.Info("no output scale configured, skipping wlr-output-management")
+		return
+	}
+	rc := int(C.configure_output_scale(C.double(scale)))
 	switch rc {
 	case 1:
-		slog.Info("output scale configured via wlr-output-management")
+		slog.Info("output scale configured via wlr-output-management", "scale", scale)
 	case 0:
 		slog.Info("no output scale change needed")
 	case -1:

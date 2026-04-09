@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-const defaultPath = "/var/lib/greetdeez/state.json"
+const appName = "greetdeez"
 
 // State persists user preferences across logins.
 type State struct {
@@ -56,5 +56,11 @@ func filePath() string {
 	if p := os.Getenv("GREETDEEZ_STATE_FILE"); p != "" {
 		return p
 	}
-	return defaultPath
+	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
+		return filepath.Join(dir, appName, "state.json")
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".local", "state", appName, "state.json")
+	}
+	return filepath.Join("/var/lib", appName, "state.json")
 }

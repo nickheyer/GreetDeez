@@ -12,7 +12,10 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-const DefaultConfigPath = "/etc/greetd/greetdeez.conf"
+const (
+	appName          = "greetdeez"
+	systemConfigPath = "/etc/greetd/greetdeez.conf"
+)
 
 type Config struct {
 	Debug    bool           `toml:"debug"`
@@ -29,9 +32,10 @@ type UIConfig struct {
 }
 
 type WindowConfig struct {
-	Title  string `toml:"title"`
-	Width  int    `toml:"width"`
-	Height int    `toml:"height"`
+	Title  string  `toml:"title"`
+	Width  int     `toml:"width"`
+	Height int     `toml:"height"`
+	Scale  float64 `toml:"scale"`
 }
 
 type AuthConfig struct {
@@ -57,6 +61,23 @@ type SessionDir struct {
 type SessionsConfig struct {
 	Dirs       []SessionDir `toml:"dirs"`
 	X11Wrapper []string     `toml:"x11_wrapper"`
+}
+
+// Returns the first config path that exists
+func DefaultConfigPath() string {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		p := filepath.Join(dir, appName, "greetdeez.conf")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		p := filepath.Join(home, ".config", appName, "greetdeez.conf")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return systemConfigPath
 }
 
 // Load reads configuration with the following priority (highest wins):
@@ -87,6 +108,7 @@ func detectDefaults() Config {
 	return Config{
 		Window: WindowConfig{
 			Title: "GreetDeez",
+			Scale: 1.25,
 		},
 		Auth: AuthConfig{
 			TimeoutSeconds: 30,
@@ -117,6 +139,11 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("GREETDEEZ_WINDOW_HEIGHT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.Window.Height = n
+		}
+	}
+	if v := os.Getenv("GREETDEEZ_SCALE"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.Window.Scale = f
 		}
 	}
 	if v := os.Getenv("GREETDEEZ_AUTH_TIMEOUT_SECONDS"); v != "" {
