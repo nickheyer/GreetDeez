@@ -22,7 +22,7 @@
           gnumake
           gtk3
           webkitgtk_4_1
-          wlr-randr
+          wayland
           cage
         ];
       };

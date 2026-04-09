@@ -1,11 +1,15 @@
 package binds
 
 /*
-#cgo pkg-config: gtk+-3.0 webkit2gtk-4.1
+#cgo pkg-config: gtk+-3.0 webkit2gtk-4.1 wayland-client
+#cgo CFLAGS: -I${SRCDIR}/libs/wlr/include
+#cgo LDFLAGS: -lm
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 #include <string.h>
 #include <dlfcn.h>
+
+extern int configure_output_scale(void);
 
 // gdk_monitor_get_connector exists since GTK 3.22 but header version guards
 // can hide the declaration. Look it up at runtime to avoid compile errors.
@@ -57,6 +61,7 @@ static void fullscreen_on_monitor_idx(GtkWindow *win, int idx) {
 */
 import "C"
 import (
+	"log/slog"
 	"unsafe"
 )
 
@@ -102,6 +107,23 @@ func Fullscreen(gtkWindow unsafe.Pointer) {
 	win := (*C.GtkWindow)(gtkWindow)
 	C.gtk_window_set_decorated(win, C.FALSE)
 	C.gtk_window_fullscreen(win)
+}
+
+// Connects to the compositor via wlr-output-management - Call BEFORE webview.New().
+func ConfigureOutputScale() {
+	rc := int(C.configure_output_scale())
+	switch rc {
+	case 1:
+		slog.Info("output scale configured via wlr-output-management")
+	case 0:
+		slog.Info("no output scale change needed")
+	case -1:
+		slog.Warn("could not connect to wayland display for scale configuration")
+	case -2:
+		slog.Warn("compositor does not support wlr-output-management protocol")
+	default:
+		slog.Error("output scale configuration failed", "rc", rc)
+	}
 }
 
 // Banning browser features bad for greeter

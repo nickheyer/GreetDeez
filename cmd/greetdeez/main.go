@@ -20,6 +20,7 @@ import (
 	"github.com/nickheyer/greetdeez/internal/display"
 	"github.com/nickheyer/greetdeez/internal/greetd"
 	"github.com/nickheyer/greetdeez/internal/server"
+	"github.com/nickheyer/greetdeez/pkg/binds"
 	"github.com/nickheyer/greetdeez/pkg/rpc"
 	"github.com/nickheyer/greetdeez/pkg/webview"
 	uipkg "github.com/nickheyer/greetdeez/ui"
@@ -41,11 +42,8 @@ func main() {
 	client := connectGreetd(*devMode)
 	defer client.Close()
 
-	// Fix cage's missing output scale BEFORE GTK init.
-	// Cage never sets wl_output.scale, so it defaults to 1 on DRM.
-	// We use wlr-randr to set it via the wlr-output-management protocol.
-	if !*devMode {
-		display.ConfigureOutputScale()
+	if !*devMode { // set wayland scaling via wlr protocol
+		binds.ConfigureOutputScale()
 	}
 
 	navURL := *devUI
