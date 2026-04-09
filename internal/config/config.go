@@ -71,12 +71,6 @@ func DefaultConfigPath() string {
 			return p
 		}
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		p := filepath.Join(home, ".config", appName, "greetdeez.conf")
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
 	return systemConfigPath
 }
 
@@ -108,7 +102,7 @@ func detectDefaults() Config {
 	return Config{
 		Window: WindowConfig{
 			Title: "GreetDeez",
-			Scale: 1.25,
+			Scale: 1.5,
 		},
 		Auth: AuthConfig{
 			TimeoutSeconds: 30,

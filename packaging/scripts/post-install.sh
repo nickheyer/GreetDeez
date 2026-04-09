@@ -12,7 +12,7 @@ fi
 
 # --- State directory ---
 # tmpfiles.d handles this on systemd distros; this is the fallback.
-install -d -m 0750 -o greetdeez -g greetdeez /var/lib/greetdeez 2>/dev/null || true
+install -d -m 0755 -o greetdeez -g greetdeez /var/cache/greetdeez 2>/dev/null || true
 
 # --- PAM config (match SDDM parity: keyring/kwallet support) ---
 # Idempotent: appends optional modules only if not already present.
