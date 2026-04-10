@@ -46,6 +46,14 @@ func main() {
 		binds.ConfigureOutputScale(cfg.Window.Scale)
 	}
 
+	// Nix mesa stack causes dmabuf issues, force shm
+	if _, err := os.Stat("/etc/NIXOS"); err == nil {
+		if os.Getenv("WEBKIT_DISABLE_DMABUF_RENDERER") == "" {
+			os.Setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+			slog.Info("NixOS detected, disabled WebKit DMA-BUF renderer")
+		}
+	}
+
 	navURL := *devUI
 	if navURL == "" {
 		uiFS, err := resolveUIFS(cfg.UI.Path, cfg.UI.Theme)
