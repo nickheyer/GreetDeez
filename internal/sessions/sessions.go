@@ -150,19 +150,17 @@ func parseDesktopEntry(path, sessType string) (*Session, error) {
 	}, nil
 }
 
-// This is absolute SLOP
-// parenHintRe matches parenthesized compositor/protocol hints like
-// "(Wayland)", "(X11)", "(Xorg)", "(X.Org)", case-insensitive.
+// matches trailing hints like (Wayland) (X11) (Xorg)
 var parenHintRe = regexp.MustCompile(`(?i)\s*\((wayland|x11|xorg|x\.org)\)\s*$`)
 
-// Strips redundant session-type hints from the display name
+// strips session type hints from display name
 func cleanSessionName(name string) string {
 	name = strings.TrimSuffix(strings.TrimSuffix(name, " on Wayland"), " on Xorg")
 	name = parenHintRe.ReplaceAllString(name, "")
 	return strings.TrimSpace(name)
 }
 
-// Splits an Exec value into args, respecting "shlex"
+// splits Exec value into args shlex style drops field codes
 func parseExecString(s string) []string {
 	var args []string
 	var cur []byte
@@ -178,6 +176,14 @@ func parseExecString(s string) []string {
 		}
 		if c == '\\' {
 			escaped = true
+			continue
+		}
+		// %% is literal percent other %x are field codes
+		if c == '%' && i+1 < len(s) {
+			i++
+			if s[i] == '%' {
+				cur = append(cur, '%')
+			}
 			continue
 		}
 		if c == '"' {

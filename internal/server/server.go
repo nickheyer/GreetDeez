@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	pb "github.com/nickheyer/greetdeez/gen/go/greetdeez/v1"
 	"github.com/nickheyer/greetdeez/internal/config"
@@ -14,10 +15,16 @@ import (
 	"github.com/nickheyer/greetdeez/internal/state"
 )
 
+// generic error keeps pam details out of ui
+const authFailedMsg = "authentication failed"
+
 type Server struct {
 	pb.UnimplementedGreeterServiceServer
 	client *greetd.Client
 	cfg    *config.Config
+
+	// one greetd conn one conversation at a time
+	mu sync.Mutex
 }
 
 func New(client *greetd.Client, cfg *config.Config) *Server {
@@ -25,19 +32,110 @@ func New(client *greetd.Client, cfg *config.Config) *Server {
 }
 
 func (s *Server) Authenticate(ctx context.Context, req *pb.AuthenticateRequest) (*pb.AuthenticateResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.client == nil {
 		slog.Debug("dev: authenticate", "username", req.Username)
 		return &pb.AuthenticateResponse{Success: true}, nil
 	}
 
-	_, err := s.client.Authenticate(ctx, req.Username, req.Password)
+	res, err := s.client.Authenticate(ctx, req.Username, req.Password)
 	if err != nil {
-		return &pb.AuthenticateResponse{Success: false, Error: err.Error()}, nil
+		slog.Warn("auth failed", "username", req.Username, "error", err)
+		return &pb.AuthenticateResponse{Success: false, Error: authFailedMsg}, nil
 	}
-	return &pb.AuthenticateResponse{Success: true}, nil
+	return &pb.AuthenticateResponse{Success: true, Messages: res.Messages}, nil
+}
+
+// ── Interactive auth ────────────────────────────────────────────
+
+func (s *Server) BeginAuth(ctx context.Context, req *pb.BeginAuthRequest) (*pb.AuthStep, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		slog.Debug("dev: beginAuth", "username", req.Username)
+		return &pb.AuthStep{Success: true}, nil
+	}
+
+	s.client.CancelSession(ctx)
+	resp, err := s.client.CreateSession(ctx, req.Username)
+	return s.advance(ctx, resp, err, nil), nil
+}
+
+func (s *Server) RespondAuth(ctx context.Context, req *pb.RespondAuthRequest) (*pb.AuthStep, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client == nil {
+		return &pb.AuthStep{Success: true}, nil
+	}
+
+	resp, err := s.client.PostAuthResponse(ctx, &req.Response)
+	return s.advance(ctx, resp, err, nil), nil
+}
+
+func (s *Server) CancelAuth(ctx context.Context, _ *pb.CancelAuthRequest) (*pb.CancelAuthResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client != nil {
+		s.client.CancelSession(ctx)
+	}
+	return &pb.CancelAuthResponse{Ok: true}, nil
+}
+
+// walks conversation acks info until prompt or terminal
+func (s *Server) advance(ctx context.Context, resp *greetd.Response, err error, msgs []string) *pb.AuthStep {
+	for {
+		if err != nil {
+			slog.Warn("auth conversation failed", "error", err)
+			s.client.CancelSession(ctx)
+			return &pb.AuthStep{Error: authFailedMsg, Messages: msgs}
+		}
+
+		switch resp.Type {
+		case "success":
+			return &pb.AuthStep{Success: true, Messages: msgs}
+
+		case "error":
+			slog.Warn("auth rejected", "error_type", strDeref(resp.ErrorType), "description", strDeref(resp.Description))
+			s.client.CancelSession(ctx)
+			return &pb.AuthStep{Error: authFailedMsg, Messages: msgs}
+
+		case "auth_message":
+			msgType := strDeref(resp.AuthMessageType)
+			msg := strDeref(resp.AuthMessage)
+
+			switch msgType {
+			case "visible":
+				return &pb.AuthStep{Prompt: &pb.AuthPrompt{Type: pb.PromptType_PROMPT_TYPE_VISIBLE, Message: msg}, Messages: msgs}
+			case "secret":
+				return &pb.AuthStep{Prompt: &pb.AuthPrompt{Type: pb.PromptType_PROMPT_TYPE_SECRET, Message: msg}, Messages: msgs}
+			default:
+				// info and error lines just collect and ack
+				if msg != "" {
+					msgs = append(msgs, msg)
+				}
+				resp, err = s.client.PostAuthResponse(ctx, nil)
+			}
+
+		default:
+			slog.Error("unexpected greetd response", "type", resp.Type)
+			s.client.CancelSession(ctx)
+			return &pb.AuthStep{Error: authFailedMsg, Messages: msgs}
+		}
+	}
 }
 
 func (s *Server) StartSession(ctx context.Context, req *pb.StartSessionRequest) (*pb.StartSessionResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.startSessionLocked(ctx, req)
+}
+
+func (s *Server) startSessionLocked(ctx context.Context, req *pb.StartSessionRequest) (*pb.StartSessionResponse, error) {
 	sess := req.Session
 	if sess == nil {
 		return &pb.StartSessionResponse{Success: false, Error: "session is required"}, nil
@@ -70,6 +168,9 @@ func (s *Server) StartSession(ctx context.Context, req *pb.StartSessionRequest) 
 }
 
 func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.client == nil {
 		slog.Debug("dev: login", "username", req.Username)
 		if req.Session != nil {
@@ -81,22 +182,21 @@ func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResp
 		return &pb.LoginResponse{Success: true}, nil
 	}
 
-	// Step 1: Authenticate
-	_, err := s.client.Authenticate(ctx, req.Username, req.Password)
+	res, err := s.client.Authenticate(ctx, req.Username, req.Password)
 	if err != nil {
-		return &pb.LoginResponse{Success: false, Error: err.Error()}, nil
+		slog.Warn("auth failed", "username", req.Username, "error", err)
+		return &pb.LoginResponse{Success: false, Error: authFailedMsg}, nil
 	}
 
-	// Step 2: Start session
-	startResp, err := s.StartSession(ctx, &pb.StartSessionRequest{Session: req.Session})
+	startResp, err := s.startSessionLocked(ctx, &pb.StartSessionRequest{Session: req.Session})
 	if err != nil {
-		return &pb.LoginResponse{Success: false, Error: err.Error()}, nil
+		return &pb.LoginResponse{Success: false, Error: err.Error(), Messages: res.Messages}, nil
 	}
 	if !startResp.Success {
-		return &pb.LoginResponse{Success: false, Error: startResp.Error}, nil
+		return &pb.LoginResponse{Success: false, Error: startResp.Error, Messages: res.Messages}, nil
 	}
 
-	// Save state on success
+	// state saved here before greetd reaps us
 	if req.Session != nil {
 		state.Save(state.State{
 			LastUser:    req.Username,
@@ -104,7 +204,7 @@ func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResp
 		})
 	}
 
-	return &pb.LoginResponse{Success: true}, nil
+	return &pb.LoginResponse{Success: true, Messages: res.Messages}, nil
 }
 
 func buildSessionEnv(sessType pb.SessionType, desktop string) []string {
@@ -224,4 +324,11 @@ func mapSessionType(t string) pb.SessionType {
 	default:
 		return pb.SessionType_SESSION_TYPE_UNSPECIFIED
 	}
+}
+
+func strDeref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

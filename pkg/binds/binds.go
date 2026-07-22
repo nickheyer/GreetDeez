@@ -11,8 +11,7 @@ package binds
 
 extern int configure_output_scale(double scale);
 
-// gdk_monitor_get_connector exists since GTK 3.22 but header version guards
-// can hide the declaration. Look it up at runtime to avoid compile errors.
+// header guards can hide gdk_monitor_get_connector so resolve at runtime
 typedef const char* (*gdk_monitor_get_connector_fn)(GdkMonitor*);
 static const char* try_get_connector(GdkMonitor *mon) {
     static gdk_monitor_get_connector_fn fn = NULL;
@@ -75,8 +74,7 @@ type MonitorInfo struct {
 	Connector string
 }
 
-// EnumerateMonitors returns all monitors visible to the compositor via GDK.
-// Must be called after GTK is initialized (after webview.New).
+// EnumerateMonitors lists gdk monitors call after webview.New
 func EnumerateMonitors() []MonitorInfo {
 	n := int(C.get_n_monitors())
 	monitors := make([]MonitorInfo, 0, n)
@@ -115,9 +113,7 @@ func Undecorate(gtkWindow unsafe.Pointer) {
 	C.gtk_window_set_decorated(win, C.FALSE)
 }
 
-// ConfigureOutputScale sets the wlr output scale on all enabled heads.
-// Pass the exact scale you want (e.g. 1.25). If scale <= 0, this is a no-op.
-// Call BEFORE webview.New().
+// ConfigureOutputScale sets wlr output scale call before webview.New
 func ConfigureOutputScale(scale float64) {
 	if scale <= 0 {
 		slog.Info("no output scale configured, skipping wlr-output-management")

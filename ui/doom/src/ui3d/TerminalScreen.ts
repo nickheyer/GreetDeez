@@ -173,23 +173,7 @@ export class TerminalScreen extends THREE.Group {
 	}
 
 	private renderIdle() {
-		// Layout:
-		//  0: UAC SYSTEMS v6.66
-		//  1: MARS FACILITY // SECTOR 7-G
-		//  2: ================================
-		//  3: hostname
-		//  4: (blank)
-		//  5: IDENTIFY: username_
-		//  6: ACCESS CODE: ********
-		//  7: (blank)
-		//  8: MISSION: [SessionName] (</>)
-		//  9: (blank)
-		// 10: > ENGAGE [ENTER]
-		// 11: (blank)
-		// 12: error / status line
-		// 13: caps lock warning
-		// 14: (blank)
-		// 15: clock
+		// rows 0 title 1 sector 2 rule 3 host 5 user 6 code 8 mission 10 engage 12 status 13 caps 15 clock
 
 		const cursor = this.cursorVisible ? "_" : " ";
 

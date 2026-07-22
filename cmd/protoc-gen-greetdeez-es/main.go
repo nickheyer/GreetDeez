@@ -76,8 +76,8 @@ func generateClient(gen *protogen.Plugin, file *protogen.File, svc *protogen.Ser
 
 	// Import types
 	g.P("import type {")
-	for _, m := range svc.Methods {
-		g.P("  ", m.Input.GoIdent.GoName, ", ", m.Output.GoIdent.GoName, ",")
+	for _, name := range uniqueMessageNames(svc, "") {
+		g.P("  ", name, ",")
 	}
 	g.P(`} from "./types.js";`)
 	g.P()
@@ -115,8 +115,7 @@ func generateClient(gen *protogen.Plugin, file *protogen.File, svc *protogen.Ser
 	g.P("};")
 	g.P()
 
-	// Internal protobuf imports
-	// protoc-gen-es outputs to {proto_path}/ relative to the out dir
+	// protoc-gen-es outputs under proto path relative to out dir
 	greeterPrefix := "./" + strings.ReplaceAll(string(file.Desc.Package()), ".", "/")
 	transportPrefix := "./transport/v1"
 
@@ -125,10 +124,10 @@ func generateClient(gen *protogen.Plugin, file *protogen.File, svc *protogen.Ser
 	g.P(`import { toBinary, fromBinary, create } from "@bufbuild/protobuf";`)
 	g.P(`import { RpcEnvelopeSchema, RpcResultSchema } from "`, transportPrefix, `/transport_pb.js";`)
 
-	// Collect all unique schema imports from greeter_pb
+	// unique schema imports from greeter_pb
 	g.P("import {")
-	for _, m := range svc.Methods {
-		g.P("  ", m.Input.GoIdent.GoName, "Schema, ", m.Output.GoIdent.GoName, "Schema,")
+	for _, name := range uniqueMessageNames(svc, "Schema") {
+		g.P("  ", name, ",")
 	}
 	g.P(`} from "`, greeterPrefix, `/greeter_pb.js";`)
 	g.P()
@@ -210,6 +209,23 @@ func generateClient(gen *protogen.Plugin, file *protogen.File, svc *protogen.Ser
 }
 
 // ── Helpers ─────────────────────────────────────────────────────
+
+// request and response names deduped rpcs may share types
+func uniqueMessageNames(svc *protogen.Service, suffix string) []string {
+	seen := map[string]bool{}
+	var names []string
+	add := func(n string) {
+		if !seen[n] {
+			seen[n] = true
+			names = append(names, n+suffix)
+		}
+	}
+	for _, m := range svc.Methods {
+		add(m.Input.GoIdent.GoName)
+		add(m.Output.GoIdent.GoName)
+	}
+	return names
+}
 
 func stripPrefix(name string) string {
 	return name

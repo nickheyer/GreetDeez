@@ -32,10 +32,6 @@ void CgoWebViewBind(webview_t w, const char *name, uintptr_t index) {
     webview_bind(w, name, _webview_binding_cb, (void *)ctx);
 }
 
-void CgoWebViewUnbind(webview_t w, const char *name) {
-    webview_unbind(w, name);
-}
-
 static gboolean _suppress_context_menu(
     WebKitWebView *wv, WebKitContextMenu *menu,
     GdkEvent *event, WebKitHitTestResult *hit, gpointer data) {

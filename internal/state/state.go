@@ -9,13 +9,13 @@ import (
 
 const appName = "greetdeez"
 
-// State persists user preferences across logins.
+// remembered across logins
 type State struct {
 	LastUser    string `json:"last_user,omitempty"`
 	LastSession string `json:"last_session,omitempty"`
 }
 
-// Load reads the state file. Returns empty state if the file doesn't exist or is unreadable.
+// Load reads state file missing or corrupt gives empty
 func Load() State {
 	path := filePath()
 	data, err := os.ReadFile(path)
@@ -32,11 +32,11 @@ func Load() State {
 	return s
 }
 
-// Save writes the state file atomically.
+// Save writes state file atomically
 func Save(s State) error {
 	path := filePath()
 
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
 		return err
 	}
 
@@ -45,8 +45,9 @@ func Save(s State) error {
 		return err
 	}
 
+	// 0600 last user is nobodys business
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

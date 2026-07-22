@@ -74,13 +74,11 @@ func DefaultConfigPath() string {
 	return systemConfigPath
 }
 
-// Load reads configuration with the following priority (highest wins):
-//
-//	environment variables (GREETDEEZ_*) > config file > detected host defaults
+// Load layers env over file over detected defaults
 func Load(path string) (Config, error) {
 	cfg := detectDefaults()
 
-	// Layer 2: config file overrides detected defaults
+	// file overrides detected defaults
 	if data, err := os.ReadFile(path); err == nil {
 		if err := toml.Unmarshal(data, &cfg); err != nil {
 			return cfg, err
@@ -92,7 +90,7 @@ func Load(path string) (Config, error) {
 		slog.Warn("failed to read config file, using detected defaults", "path", path, "error", err)
 	}
 
-	// Layer 3: env vars override everything
+	// env wins over everything
 	applyEnvOverrides(&cfg)
 
 	return cfg, nil
@@ -120,7 +118,7 @@ func detectDefaults() Config {
 	}
 }
 
-// applyEnvOverrides maps GREETDEEZ_* environment variables onto the config.
+// maps GREETDEEZ_* env vars onto config
 func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("GREETDEEZ_WINDOW_TITLE"); v != "" {
 		cfg.Window.Title = v

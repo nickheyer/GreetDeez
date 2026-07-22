@@ -115,23 +115,13 @@ export function App() {
 		try {
 			const session = sessions[selectedSession];
 
-			const authResp = await client.authenticate({ username, password });
-			if (!authResp.success) {
-				setError(authResp.error || "Authentication failed");
+			// login does auth start and state in one rpc
+			const resp = await client.login({ username, password, session });
+			if (!resp.success) {
+				const msgs = resp.messages?.filter(Boolean) ?? [];
+				setError(msgs.length ? msgs.join(" ") : resp.error || "Authentication failed");
 				setBusy(false);
-				return;
 			}
-
-			const startResp = await client.startSession({ session });
-			if (!startResp.success) {
-				setError(startResp.error || "Session start failed");
-				setBusy(false);
-				return;
-			}
-
-			await client.saveState({
-				state: { lastUser: username, lastSession: session.name },
-			});
 		} catch (e) {
 			setError(String(e));
 			setBusy(false);

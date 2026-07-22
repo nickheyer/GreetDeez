@@ -139,6 +139,8 @@ title = "GreetDeez"
 # width and height are auto-detected from DRM. Under cage these are irrelevant.
 # width  = 1920
 # height = 1080
+# Wayland output scale, applied via wlr-output-management before the UI starts.
+scale = 1.5
 
 [auth]
 timeout_seconds = 30
@@ -162,7 +164,7 @@ theme = "minimal"
 # path = "/path/to/your/custom/ui"
 ```
 
-Environment variables (`GREETDEEZ_*`) override file values. For example: `GREETDEEZ_UI_THEME`, `GREETDEEZ_UI_PATH`, `GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, `GREETDEEZ_POWER_ENABLED`, `GREETDEEZ_DEBUG`.
+Environment variables (`GREETDEEZ_*`) override file values. For example: `GREETDEEZ_UI_THEME`, `GREETDEEZ_UI_PATH`, `GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_SCALE`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, `GREETDEEZ_POWER_ENABLED`, `GREETDEEZ_DEBUG`.
 
 ## Building a Custom Front End
 
@@ -205,7 +207,10 @@ const client = createGreeterServiceClient({
 | `getState()` | Load persisted state (last user, last session) |
 | `authenticate({ username, password })` | Validate credentials without starting a session |
 | `startSession({ session })` | Start the selected desktop session |
-| `login({ username, password, session })` | Authenticate + start session in one call |
+| `login({ username, password, session })` | Authenticate + start session + save state in one call |
+| `beginAuth({ username })` | Start an interactive PAM conversation (MFA-capable) |
+| `respondAuth({ response })` | Answer the current PAM prompt |
+| `cancelAuth()` | Abort the PAM conversation |
 | `executePowerAction({ action })` | Poweroff, reboot, or suspend |
 | `saveState({ state })` | Persist last user / last session |
 
@@ -236,6 +241,25 @@ if (auth.success) {
 
 // Power actions
 await client.executePowerAction({ action: PowerAction.REBOOT });
+```
+
+### Interactive auth (MFA / custom)
+
+For PAM stacks that ask for more than a password
+
+```ts
+import { PromptType } from "@nickheyer/greetdeez";
+
+let step = await client.beginAuth({ username: "nick" });
+while (!step.success && !step.error) {
+  // step.prompt.type is SECRET or VISIBLE
+  // step.prompt.message is the PAM text
+  const answer = await askUser(step.prompt);
+  step = await client.respondAuth({ response: answer });
+}
+if (step.success) {
+  await client.startSession({ session });
+}
 ```
 
 Build your project so it outputs an `index.html`, then point GreetDeez at it:

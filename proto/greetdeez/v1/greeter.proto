@@ -55,8 +55,9 @@ message LoginRequest {
   Session session  = 3;
 }
 message LoginResponse {
-  bool   success = 1;
-  string error   = 2;
+  bool            success  = 1;
+  string          error    = 2;
+  repeated string messages = 3;
 }
 
 // Staged step 1: authenticate only
@@ -65,9 +66,37 @@ message AuthenticateRequest {
   string password = 2;
 }
 message AuthenticateResponse {
-  bool   success = 1;
-  string error   = 2;
+  bool            success  = 1;
+  string          error    = 2;
+  repeated string messages = 3;
 }
+
+// ── Interactive auth (full pam conversation) ────────────────────
+
+enum PromptType {
+  PROMPT_TYPE_UNSPECIFIED = 0;
+  PROMPT_TYPE_VISIBLE     = 1;
+  PROMPT_TYPE_SECRET      = 2;
+}
+
+// pam wants input from user
+message AuthPrompt {
+  PromptType type    = 1;
+  string     message = 2;
+}
+
+// one step of conversation ends in prompt or terminal state
+message AuthStep {
+  bool            success  = 1;
+  AuthPrompt      prompt   = 2;
+  repeated string messages = 3;
+  string          error    = 4;
+}
+
+message BeginAuthRequest   { string username = 1; }
+message RespondAuthRequest { string response = 1; }
+message CancelAuthRequest  {}
+message CancelAuthResponse { bool ok = 1; }
 
 // Staged step 2: start session (after successful Authenticate)
 message StartSessionRequest {
@@ -102,6 +131,10 @@ service GreeterService {
   rpc Login(LoginRequest)                 returns (LoginResponse);
   rpc Authenticate(AuthenticateRequest)   returns (AuthenticateResponse);
   rpc StartSession(StartSessionRequest)   returns (StartSessionResponse);
+
+  rpc BeginAuth(BeginAuthRequest)         returns (AuthStep);
+  rpc RespondAuth(RespondAuthRequest)     returns (AuthStep);
+  rpc CancelAuth(CancelAuthRequest)       returns (CancelAuthResponse);
 
   rpc ListSessions(ListSessionsRequest)   returns (ListSessionsResponse);
 

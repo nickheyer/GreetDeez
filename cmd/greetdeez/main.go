@@ -14,6 +14,7 @@ import (
 	"path"
 	"strings"
 	"syscall"
+	"time"
 
 	greetdeezv1 "github.com/nickheyer/greetdeez/gen/go/greetdeez/v1"
 	"github.com/nickheyer/greetdeez/internal/config"
@@ -27,10 +28,8 @@ import (
 )
 
 func main() {
-	logFile, err := os.OpenFile("/tmp/greetdeez.log", os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err == nil {
-		slog.SetDefault(slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	}
+	// stderr lands in journal via greetd no tmp file
+	setupLogging(os.Getenv("GREETDEEZ_DEBUG") == "1" || os.Getenv("GREETDEEZ_DEBUG") == "true")
 
 	devMode := flag.Bool("dev", false, "Enable dev mode (debug inspector, tolerate missing GREETD_SOCK)")
 	devUI := flag.String("dev-ui", "", "Navigate webview to this URL instead of embedded UI (e.g. http://localhost:5173)")
@@ -38,8 +37,11 @@ func main() {
 	flag.Parse()
 
 	cfg := loadConfig(*configPath)
+	if cfg.Debug {
+		setupLogging(true)
+	}
 
-	client := connectGreetd(*devMode)
+	client := connectGreetd(*devMode, cfg.Auth.Timeout())
 	defer client.Close()
 
 	if !*devMode { // set wayland scaling via wlr protocol
@@ -124,8 +126,16 @@ func validatePowerCmds(cfg *config.Config) {
 	check("suspend", cfg.Power.SuspendCmd)
 }
 
-func connectGreetd(devMode bool) *greetd.Client {
-	client, err := greetd.NewClient()
+func setupLogging(debug bool) {
+	level := slog.LevelInfo
+	if debug {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+}
+
+func connectGreetd(devMode bool, timeout time.Duration) *greetd.Client {
+	client, err := greetd.NewClient(timeout)
 	if err != nil {
 		if devMode {
 			slog.Warn("greetd unavailable, running in dev mode", "error", err)

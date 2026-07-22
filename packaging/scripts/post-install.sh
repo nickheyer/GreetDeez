@@ -1,22 +1,17 @@
 #!/bin/sh
 set -e
 
-# Single source of truth for post-install setup.
-# Called by: nFPM postinstall, AUR .install, and `make install`.
+# post install shared by nfpm aur and make install
 
-# --- System user ---
-# sysusers.d handles this on systemd distros; this is the fallback.
+# system user fallback when no sysusers.d
 if ! id -u greetdeez >/dev/null 2>&1; then
     useradd -r -s /usr/bin/nologin -d /var/lib/greetdeez -m greetdeez 2>/dev/null || true
 fi
 
-# --- State directory ---
-# tmpfiles.d handles this on systemd distros; this is the fallback.
-install -d -m 0755 -o greetdeez -g greetdeez /var/cache/greetdeez 2>/dev/null || true
+# state dir fallback when no tmpfiles.d
+install -d -m 0750 -o greetdeez -g greetdeez /var/cache/greetdeez 2>/dev/null || true
 
-# --- PAM config (match SDDM parity: keyring/kwallet support) ---
-# Idempotent: appends optional modules only if not already present.
-# The '-' prefix means modules are silently skipped if not installed.
+# pam keyring kwallet parity dash prefix skips missing modules
 if [ -f /etc/pam.d/greetd ] && ! grep -q 'pam_kwallet5' /etc/pam.d/greetd 2>/dev/null; then
     printf '\n%s\n%s\n%s\n%s\n%s\n' \
         '-auth       optional    pam_gnome_keyring.so' \

@@ -13,13 +13,16 @@ import (
 
 const defaultTimeout = 30 * time.Second
 
-// Client communicates with greetd over its unix socket IPC protocol.
-// Protocol: each message is a u32 length prefix (little-endian) followed by JSON.
+// sane cap greetd replies are tiny
+const maxMsgLen = 1 << 20
+
+// talks greetd unix socket u32 le length then json
 type Client struct {
-	conn net.Conn
+	conn    net.Conn
+	timeout time.Duration
 }
 
-// Request types sent to greetd
+// requests we send
 type createSessionRequest struct {
 	Type     string `json:"type"`
 	Username string `json:"username"`
@@ -40,7 +43,7 @@ type cancelSessionRequest struct {
 	Type string `json:"type"`
 }
 
-// Response types received from greetd
+// responses we get back
 type Response struct {
 	Type            string  `json:"type"`
 	AuthMessageType *string `json:"auth_message_type"`
@@ -49,7 +52,8 @@ type Response struct {
 	Description     *string `json:"description"`
 }
 
-func NewClient() (*Client, error) {
+// timeout <= 0 falls back to default
+func NewClient(timeout time.Duration) (*Client, error) {
 	sock := os.Getenv("GREETD_SOCK")
 	if sock == "" {
 		return nil, fmt.Errorf("GREETD_SOCK not set — are you running under greetd?")
@@ -60,7 +64,10 @@ func NewClient() (*Client, error) {
 		return nil, fmt.Errorf("connect to greetd: %w", err)
 	}
 
-	return &Client{conn: conn}, nil
+	if timeout <= 0 {
+		timeout = defaultTimeout
+	}
+	return &Client{conn: conn, timeout: timeout}, nil
 }
 
 func (c *Client) Close() error {
@@ -94,6 +101,9 @@ func (c *Client) recv() (*Response, error) {
 		return nil, fmt.Errorf("read length: %w", err)
 	}
 	length := binary.LittleEndian.Uint32(lenBuf)
+	if length > maxMsgLen {
+		return nil, fmt.Errorf("message too large: %d bytes", length)
+	}
 
 	data := make([]byte, length)
 	if _, err := io.ReadFull(c.conn, data); err != nil {
@@ -107,11 +117,11 @@ func (c *Client) recv() (*Response, error) {
 	return &resp, nil
 }
 
-// Sends a message and reads the response with a context deadline
+// send then recv under deadline
 func (c *Client) roundTrip(ctx context.Context, msg any) (*Response, error) {
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		deadline = time.Now().Add(defaultTimeout)
+		deadline = time.Now().Add(c.timeout)
 	}
 	if err := c.conn.SetDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("set deadline: %w", err)
@@ -124,7 +134,7 @@ func (c *Client) roundTrip(ctx context.Context, msg any) (*Response, error) {
 	return c.recv()
 }
 
-// Starts Authentication for the given username
+// starts auth for username
 func (c *Client) CreateSession(ctx context.Context, username string) (*Response, error) {
 	return c.roundTrip(ctx, createSessionRequest{
 		Type:     "create_session",
@@ -132,7 +142,7 @@ func (c *Client) CreateSession(ctx context.Context, username string) (*Response,
 	})
 }
 
-// Sends the auth response to greetd
+// answers current pam prompt nil acks info
 func (c *Client) PostAuthResponse(ctx context.Context, response *string) (*Response, error) {
 	return c.roundTrip(ctx, postAuthResponse{
 		Type:     "post_auth_message_response",
@@ -140,7 +150,7 @@ func (c *Client) PostAuthResponse(ctx context.Context, response *string) (*Respo
 	})
 }
 
-// Tells greetd to launch the user's session with the given command and env
+// launches session with cmd and env
 func (c *Client) StartSession(ctx context.Context, cmd []string, env []string) (*Response, error) {
 	return c.roundTrip(ctx, startSessionRequest{
 		Type: "start_session",
@@ -149,19 +159,19 @@ func (c *Client) StartSession(ctx context.Context, cmd []string, env []string) (
 	})
 }
 
-// Cancels an in-progress auth
+// aborts in progress auth
 func (c *Client) CancelSession(ctx context.Context) (*Response, error) {
 	return c.roundTrip(ctx, cancelSessionRequest{
 		Type: "cancel_session",
 	})
 }
 
-// Outcome of an Authenticate call
+// what a flattened Authenticate saw along the way
 type AuthResult struct {
-	Messages []string // non-secret auth messages (info, errors, MOTD, etc.)
+	Messages []string
 }
 
-// The full create_session -> post_auth_response flow
+// single password flow answers every secret with password
 func (c *Client) Authenticate(ctx context.Context, username, password string) (*AuthResult, error) {
 	c.CancelSession(ctx)
 
@@ -180,7 +190,6 @@ func (c *Client) Authenticate(ctx context.Context, username, password string) (*
 		if resp.AuthMessageType != nil && *resp.AuthMessageType == "secret" {
 			reply = &password
 		} else if resp.AuthMessage != nil && *resp.AuthMessage != "" {
-			// Collect messages (not secret)
 			messages = append(messages, *resp.AuthMessage)
 		}
 

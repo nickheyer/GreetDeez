@@ -85,14 +85,14 @@ jobs:
           mkdir -p ~/.ssh && ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
           goreleaser release --clean
 
-      - name: Publish to Cloudsmith
-        if: "!contains(github.ref, '-')"
-        env:
-          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
-        run: |
-          [ -z "$CLOUDSMITH_API_KEY" ] && exit 0
-          pip3 install -q --break-system-packages cloudsmith-cli
-          for ext in deb rpm; do
-            for f in dist/*.$ext; do [ -f "$f" ] && cloudsmith push $ext nickheyer/greetdeez/any-distro/any-version "$f" --republish; done
-          done
-          for f in dist/*.apk; do [ -f "$f" ] && cloudsmith push alpine nickheyer/greetdeez/alpine/any-version "$f" --republish; done
+      # - name: Publish to Cloudsmith
+      #   if: "!contains(github.ref, '-')"
+      #   env:
+      #     CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+      #   run: |
+      #     [ -z "$CLOUDSMITH_API_KEY" ] && exit 0
+      #     pip3 install -q --break-system-packages cloudsmith-cli
+      #     for ext in deb rpm; do
+      #       for f in dist/*.$ext; do [ -f "$f" ] && cloudsmith push $ext nickheyer/greetdeez/any-distro/any-version "$f" --republish; done
+      #     done
+      #     for f in dist/*.apk; do [ -f "$f" ] && cloudsmith push alpine nickheyer/greetdeez/alpine/any-version "$f" --republish; done

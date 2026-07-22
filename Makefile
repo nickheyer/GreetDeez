@@ -1,4 +1,4 @@
-.PHONY: build gen buf-image tools ui dev install uninstall clean package test dev-vm dev-vm-* dev-vm-down record-vm-*
+.PHONY: build gen buf-image proto-lint proto-format proto-breaking tools ui dev install uninstall clean package test dev-vm dev-vm-* dev-vm-down vm-base-*
 
 # Code gen
 BUF_IMAGE := greetdeez-buf
@@ -15,6 +15,15 @@ buf-image:
 gen: buf-image
 	$(BUF_RUN) sh -c 'go install ./cmd/protoc-gen-greetdeez-go ./cmd/protoc-gen-greetdeez-es && buf generate'
 
+proto-lint: buf-image
+	$(BUF_RUN) buf lint
+
+proto-format: buf-image
+	$(BUF_RUN) buf format -w
+
+proto-breaking: buf-image
+	$(BUF_RUN) buf breaking --against '.git#branch=main'
+
 
 # Dev tooling
 tools:
@@ -22,7 +31,7 @@ tools:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install github.com/goreleaser/goreleaser/v2@latest
 	@npm install -g @bufbuild/protoc-gen-es \
-		|| echo "protoc-gen-es not installed (npm -g failed); only needed for gen-local, gen uses Docker"
+		|| echo "protoc-gen-es not installed (npm -g failed); only needed for running buf natively, gen uses Docker"
 
 # Build
 build: gen ui
@@ -80,28 +89,19 @@ dev-vm: dev-vm-arch
 dev-vm-down:
 	$(VAGRANT) destroy -f
 
-dev-vm-%:
+# ensures base snapshot exists for vm
+vm-base-%:
 	@if ! $(VAGRANT) snapshot list $* 2>/dev/null | grep -q 'base'; then \
 		$(VAGRANT) up $* --provision-with base && \
 		$(VAGRANT) snapshot save $* base && \
 		$(VAGRANT) halt $*; \
 	fi
+
+dev-vm-%: vm-base-%
 	trap '$(VAGRANT) halt $*' EXIT; \
 	$(VAGRANT) snapshot restore $* base && \
 	$(VAGRANT) provision $* --provision-with package && \
 	virt-viewer -c qemu:///system --wait --attach GreetDeez_$*
-
-# Record a greeter demo from a VM into demo/demo.mp4 + demo/demo.webp
-record-vm-%:
-	@if ! $(VAGRANT) snapshot list $* 2>/dev/null | grep -q 'base'; then \
-		$(VAGRANT) up $* --provision-with base && \
-		$(VAGRANT) snapshot save $* base && \
-		$(VAGRANT) halt $*; \
-	fi
-	trap '$(VAGRANT) halt $*' EXIT; \
-	$(VAGRANT) snapshot restore $* base && \
-	$(VAGRANT) provision $* --provision-with package && \
-	WAIT_SECONDS=25 ./scripts/record-demo.sh GreetDeez_$* demo
 
 # Package (via goreleaser)
 package: build

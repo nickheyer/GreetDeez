@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install native deps
+        run: sudo apt-get update -qq && sudo apt-get install -yqq libwebkit2gtk-4.1-dev libwayland-dev
+
+      - name: Generate code
+        run: make gen
+
+      - name: Lint protos
+        run: make proto-lint
+
+      - name: Build proto package
+        run: cd npm/proto && npm ci && npm run build
+
+      - name: Build UIs
+        run: go generate ./ui/...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build binary
+        run: CGO_ENABLED=1 go build -o /dev/null ./cmd/greetdeez
+
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh
