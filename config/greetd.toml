@@ -3,4 +3,6 @@ vt = 7
 
 [default_session]
 command = "cage -s -m last -- /usr/bin/greetdeez"
+# For the "metal" theme drop cage — greetdeez drives the display itself:
+# command = "/usr/bin/greetdeez"
 user = "greetdeez"

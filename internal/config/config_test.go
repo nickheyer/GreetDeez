@@ -44,7 +44,7 @@ func TestEnvBeatsFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("[ui]\ntheme = \"cyber\"\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("GREETDEEZ_UI_THEME", "doom")
+	t.Setenv("GREETDEEZ_UI_THEME", "metal")
 	t.Setenv("GREETDEEZ_SCALE", "1.25")
 	t.Setenv("GREETDEEZ_AUTH_TIMEOUT_SECONDS", "7")
 
@@ -52,7 +52,7 @@ func TestEnvBeatsFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.UI.Theme != "doom" || cfg.Window.Scale != 1.25 || cfg.Auth.TimeoutSeconds != 7 {
+	if cfg.UI.Theme != "metal" || cfg.Window.Scale != 1.25 || cfg.Auth.TimeoutSeconds != 7 {
 		t.Errorf("env overrides not applied: %+v", cfg)
 	}
 }

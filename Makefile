@@ -76,7 +76,6 @@ clean:
 	rm -rf bin/
 	rm -rf ui/minimal/build
 	rm -rf ui/cyber/build
-	rm -rf ui/doom/build
 	rm -rf npm/proto/dist
 	rm -rf gen/
 	rm -rf dist/

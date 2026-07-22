@@ -1,0 +1,674 @@
+package metal
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"strings"
+	"time"
+
+	pb "github.com/nickheyer/greetdeez/gen/go/greetdeez/v1"
+)
+
+type phase int
+
+const (
+	phaseUser phase = iota
+	phasePrompt
+	phaseBusy
+	phaseWarp
+)
+
+const (
+	bootDur  = 0.8
+	warpDur  = 0.75
+	errorDur = 2.8
+	armDur   = 2.5
+
+	maxUserLen  = 48
+	maxInputLen = 128
+)
+
+// palette
+var (
+	colAccent = rgb(0x2e, 0xd4, 0xc3)
+	colEmber  = rgb(0xff, 0x8a, 0x3d)
+	colText   = rgb(0xe8, 0xf0, 0xf2)
+	colDim    = rgb(0x5a, 0x6a, 0x78)
+	colPanel  = rgb(0x07, 0x0b, 0x12)
+	colField  = rgb(0x0c, 0x14, 0x1e)
+	colError  = rgb(0xff, 0x3b, 0x4b)
+	colAmber  = rgb(0xff, 0xc4, 0x5e)
+	colShadow = rgb(0x02, 0x03, 0x06)
+)
+
+type authResult struct {
+	step *pb.AuthStep
+	err  error
+}
+
+type startResult struct{ err error }
+type powerResult struct{ err error }
+
+// UI is the whole login screen: effects, state machine, renderer.
+type UI struct {
+	be   Backend
+	w, h int
+
+	// effects
+	plasma   *Plasma
+	stars    *Starfield
+	scroller *Scroller
+	crt      *CRT
+
+	// data from the backend
+	hostname string
+	sessions []*pb.Session
+	sessIdx  int
+	caps     *pb.PowerCapabilities
+
+	// state machine
+	phase    phase
+	username []rune
+	input    []rune
+	prompt   *pb.AuthPrompt
+	msgs     []string
+	busyMsg  string
+	errMsg   string
+	errAt    float64
+	warpAt   float64
+	powerArm pb.PowerAction
+	armAt    float64
+	mods     Mods
+	resCh    chan any
+
+	// exit
+	Done    bool
+	Success bool
+
+	// wall clock injected for deterministic snapshots
+	Clock func() time.Time
+
+	// font scales derived from resolution
+	sS, sM, sL int
+}
+
+func NewUI(be Backend, w, h int) *UI {
+	u := &UI{
+		be:     be,
+		w:      w,
+		h:      h,
+		plasma: NewPlasma((w+1)/2, (h+1)/2),
+		stars:  NewStarfield(w, h, 420),
+		crt:    NewCRT(w, h),
+		resCh:  make(chan any, 4),
+		Clock:  time.Now,
+	}
+	u.sS = max(1, h/360)
+	u.sM = u.sS
+	u.sL = u.sS * 2
+	u.scroller = NewScroller(txtMarquee, u.sS)
+
+	u.loadBackendData()
+	return u
+}
+
+func (u *UI) loadBackendData() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	u.hostname = txtFallbackHostname
+	if info, err := u.be.SystemInfo(ctx); err == nil && info.GetHostname() != "" {
+		u.hostname = info.GetHostname()
+	}
+	if sessions, err := u.be.Sessions(ctx); err == nil {
+		u.sessions = sessions
+	}
+	if len(u.sessions) == 0 {
+		// still let people in on a bare box
+		u.sessions = []*pb.Session{{Name: txtFallbackSession, Cmd: []string{"/bin/sh", "-l"}}}
+	}
+	if caps, err := u.be.PowerCaps(ctx); err == nil {
+		u.caps = caps
+	} else {
+		u.caps = &pb.PowerCapabilities{}
+	}
+	if st, err := u.be.State(ctx); err == nil && st != nil {
+		u.username = []rune(st.GetLastUser())
+		for i, s := range u.sessions {
+			if s.GetName() == st.GetLastSession() {
+				u.sessIdx = i
+			}
+		}
+	}
+}
+
+func (u *UI) session() *pb.Session { return u.sessions[u.sessIdx] }
+
+func (u *UI) cycleSession(dir int) {
+	if len(u.sessions) > 1 {
+		u.sessIdx = (u.sessIdx + dir + len(u.sessions)) % len(u.sessions)
+	}
+}
+
+// ── input ───────────────────────────────────────────────────────
+
+func (u *UI) HandleKey(ev KeyEvent, now float64) {
+	if u.mods.Track(ev.Code, ev.Down) || !ev.Down {
+		return
+	}
+
+	if u.handlePowerKey(ev.Code, now) {
+		return
+	}
+
+	switch u.phase {
+	case phaseUser:
+		switch ev.Code {
+		case keyEnter, keyKpEnter:
+			if len(u.username) > 0 {
+				u.beginAuth(now)
+			}
+		case keyBackspace:
+			if u.mods.Ctrl() {
+				u.username = u.username[:0]
+			} else if len(u.username) > 0 {
+				u.username = u.username[:len(u.username)-1]
+			}
+		case keyTab, keyRight, keyDown:
+			u.cycleSession(1)
+		case keyLeft, keyUp:
+			u.cycleSession(-1)
+		default:
+			if r := u.mods.Rune(ev.Code); r != 0 && len(u.username) < maxUserLen {
+				u.username = append(u.username, r)
+			}
+		}
+
+	case phasePrompt:
+		switch ev.Code {
+		case keyEnter, keyKpEnter:
+			u.respondAuth(now)
+		case keyEsc:
+			go u.be.CancelAuth(context.Background()) //nolint:errcheck
+			u.input = u.input[:0]
+			u.prompt = nil
+			u.phase = phaseUser
+		case keyBackspace:
+			if u.mods.Ctrl() {
+				u.input = u.input[:0]
+			} else if len(u.input) > 0 {
+				u.input = u.input[:len(u.input)-1]
+			}
+		default:
+			if r := u.mods.Rune(ev.Code); r != 0 && len(u.input) < maxInputLen {
+				u.input = append(u.input, r)
+			}
+		}
+	}
+}
+
+func (u *UI) handlePowerKey(code uint16, now float64) bool {
+	var action pb.PowerAction
+	switch {
+	case code == keyF10 && u.caps.GetCanPoweroff():
+		action = pb.PowerAction_POWER_ACTION_POWEROFF
+	case code == keyF11 && u.caps.GetCanReboot():
+		action = pb.PowerAction_POWER_ACTION_REBOOT
+	case code == keyF12 && u.caps.GetCanSuspend():
+		action = pb.PowerAction_POWER_ACTION_SUSPEND
+	default:
+		return false
+	}
+
+	if u.powerArm == action && now-u.armAt < armDur {
+		u.powerArm = pb.PowerAction_POWER_ACTION_UNSPECIFIED
+		u.busyMsg = powerVerb(action)
+		u.phase = phaseBusy
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			u.resCh <- powerResult{err: u.be.Power(ctx, action)}
+		}()
+		return true
+	}
+	u.powerArm = action
+	u.armAt = now
+	return true
+}
+
+func powerVerb(a pb.PowerAction) string {
+	switch a {
+	case pb.PowerAction_POWER_ACTION_POWEROFF:
+		return txtPoweringOff
+	case pb.PowerAction_POWER_ACTION_REBOOT:
+		return txtRebooting
+	default:
+		return txtSuspending
+	}
+}
+
+func powerKeyName(a pb.PowerAction) string {
+	switch a {
+	case pb.PowerAction_POWER_ACTION_POWEROFF:
+		return txtKeyPoweroff
+	case pb.PowerAction_POWER_ACTION_REBOOT:
+		return txtKeyReboot
+	default:
+		return txtKeySuspend
+	}
+}
+
+// ── auth flow ───────────────────────────────────────────────────
+
+func (u *UI) beginAuth(now float64) {
+	u.phase = phaseBusy
+	u.busyMsg = txtAuthenticating
+	u.errMsg = ""
+	user := string(u.username)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		step, err := u.be.BeginAuth(ctx, user)
+		u.resCh <- authResult{step: step, err: err}
+	}()
+	_ = now
+}
+
+func (u *UI) respondAuth(now float64) {
+	u.phase = phaseBusy
+	u.busyMsg = txtAuthenticating
+	resp := string(u.input)
+	u.input = u.input[:0]
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		step, err := u.be.RespondAuth(ctx, resp)
+		u.resCh <- authResult{step: step, err: err}
+	}()
+	_ = now
+}
+
+func (u *UI) startSession(now float64) {
+	u.phase = phaseBusy
+	sess := u.session()
+	u.busyMsg = txtLaunching + strings.ToUpper(sess.GetName())
+	user := string(u.username)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := u.be.StartSession(ctx, sess); err != nil {
+			u.resCh <- startResult{err: err}
+			return
+		}
+		// best effort greeter is about to die anyway
+		u.be.SaveState(ctx, user, sess.GetName()) //nolint:errcheck
+		u.resCh <- startResult{}
+	}()
+	_ = now
+}
+
+func (u *UI) fail(msg string, now float64) {
+	if msg == "" {
+		msg = txtAccessDenied
+	}
+	u.errMsg = strings.ToUpper(msg)
+	u.errAt = now
+	u.prompt = nil
+	u.input = u.input[:0]
+	u.phase = phaseUser
+}
+
+func (u *UI) onAuthStep(res authResult, now float64) {
+	if res.err != nil {
+		u.fail(res.err.Error(), now)
+		return
+	}
+	step := res.step
+	for _, m := range step.GetMessages() {
+		u.msgs = append(u.msgs, m)
+	}
+	if len(u.msgs) > 3 {
+		u.msgs = u.msgs[len(u.msgs)-3:]
+	}
+	switch {
+	case step.GetError() != "":
+		u.fail(step.GetError(), now)
+	case step.GetSuccess():
+		u.startSession(now)
+	case step.GetPrompt() != nil:
+		u.prompt = step.GetPrompt()
+		u.input = u.input[:0]
+		u.phase = phasePrompt
+	default:
+		u.fail(txtAuthFailed, now)
+	}
+}
+
+// ── update ──────────────────────────────────────────────────────
+
+func (u *UI) Update(dt, now float64) {
+	for {
+		select {
+		case res := <-u.resCh:
+			switch r := res.(type) {
+			case authResult:
+				u.onAuthStep(r, now)
+			case startResult:
+				if r.err != nil {
+					u.fail(r.err.Error(), now)
+				} else {
+					u.phase = phaseWarp
+					u.warpAt = now
+				}
+			case powerResult:
+				if r.err != nil {
+					u.fail(r.err.Error(), now)
+				}
+				// on success the machine is going away no state change
+			}
+		default:
+			goto drained
+		}
+	}
+drained:
+
+	if u.phase == phaseWarp {
+		k := (now - u.warpAt) / warpDur
+		u.stars.SetWarp(float32(k))
+		if k >= 1 {
+			u.Done = true
+			u.Success = true
+		}
+	}
+
+	u.stars.Update(float32(dt))
+	u.scroller.Update(dt, u.w)
+}
+
+// ── render ──────────────────────────────────────────────────────
+
+func (u *UI) Render(f *Frame, now float64) {
+	u.plasma.Render(f, now*0.35)
+	u.stars.Render(f)
+
+	if u.phase != phaseWarp {
+		u.scroller.Render(f, u.h-14*u.sS, now)
+		u.renderClock(f, now)
+		u.renderPanel(f, now)
+	}
+
+	u.crt.Apply(f)
+	u.renderOverlays(f, now)
+}
+
+func (u *UI) renderClock(f *Frame, now float64) {
+	t := u.Clock()
+	clock := t.Format(fmtClockTime)
+	date := strings.ToUpper(t.Format(fmtClockDate))
+	cw := TextWidth(clock, u.sL)
+	x := (u.w - cw) / 2
+	y := u.h / 14
+	f.DrawTextShadow(x, y, clock, u.sL, colText, colShadow)
+	dw := TextWidth(date, u.sS)
+	f.DrawTextShadow((u.w-dw)/2, y+9*u.sL, date, u.sS, colDim, colShadow)
+	_ = now
+}
+
+// all vertical sizes in sM units so every resolution lays out the same
+const (
+	luPadTop  = 6
+	luHost    = 16 // 8 * sL where sL = 2*sM
+	luHostGap = 4
+	luSub     = 8
+	luSubGap  = 5
+	luField   = 24 // label 8 + gap 1 + box 12 + gap 3
+	luSessGap = 2
+	luSess    = 8
+	luMsgGap  = 4
+	luMsg     = 9 // line 8 + gap 1
+	luStatus  = 8
+	luPadBot  = 6
+	luTotal   = luPadTop + luHost + luHostGap + luSub + luSubGap + 2*luField + luSessGap + luSess + luMsgGap + 2*luMsg + luStatus + luPadBot
+)
+
+func (u *UI) panelRect() (x, y, w, h int) {
+	ch := glyphW * u.sM // field char width
+	w = min(ch*30+12*u.sM, u.w-4*u.sM)
+	h = luTotal * u.sM
+	x = (u.w - w) / 2
+	y = (u.h - h) / 2
+	return
+}
+
+func (u *UI) renderPanel(f *Frame, now float64) {
+	px, py, pw, ph := u.panelRect()
+
+	// error shake
+	if u.errMsg != "" && now-u.errAt < 0.4 {
+		decay := 1 - (now-u.errAt)/0.4
+		px += int(math.Sin(now*70) * 6 * decay * float64(u.sM))
+	}
+
+	f.BlendRect(px, py, pw, ph, colPanel, 216)
+	f.Border(px, py, pw, ph, dim(colAccent, 140))
+	u.corners(f, px, py, pw, ph)
+
+	cx := px + 6*u.sM // content left
+	cy := py + luPadTop*u.sM
+
+	// hostname per char bob shrink and clip if it will not fit
+	host := strings.ToUpper(u.hostname)
+	hostScale := u.sL
+	if TextWidth(host, hostScale) > pw-8*u.sM {
+		hostScale = u.sM
+	}
+	maxHostChars := (pw - 8*u.sM) / (glyphW * hostScale)
+	if len(host) > maxHostChars && maxHostChars > 0 {
+		host = host[:maxHostChars]
+	}
+	hw := TextWidth(host, hostScale)
+	hx := px + (pw-hw)/2
+	hy := cy + (luHost*u.sM-8*hostScale)/2
+	for i, ch := range host {
+		bob := int(math.Sin(now*2.2+float64(i)*0.55) * float64(u.sM))
+		f.drawGlyph(hx+i*glyphW*hostScale, hy+bob, glyph(ch), hostScale, colText, colAccent)
+	}
+	cy += (luHost + luHostGap) * u.sM
+
+	sub := txtSubtitle
+	f.DrawText(px+(pw-TextWidth(sub, u.sS))/2, cy, sub, u.sS, colDim)
+	cy += (luSub + luSubGap) * u.sM
+
+	// login field
+	fieldW := pw - 12*u.sM
+	focusUser := u.phase == phaseUser
+	u.renderField(f, cx, cy, fieldW, txtLabelLogin, string(u.username), focusUser, false, now)
+	cy += luField * u.sM
+
+	// prompt field live while pam wants something ghosted otherwise
+	if u.phase == phasePrompt || (u.phase == phaseBusy && u.prompt != nil) {
+		label := strings.ToUpper(strings.TrimRight(strings.TrimSpace(u.prompt.GetMessage()), ":"))
+		if label == "" {
+			label = txtLabelPassword
+		}
+		secret := u.prompt.GetType() == pb.PromptType_PROMPT_TYPE_SECRET
+		u.renderField(f, cx, cy, fieldW, label, string(u.input), u.phase == phasePrompt, secret, now)
+	} else {
+		u.renderGhostField(f, cx, cy, fieldW, txtLabelPassword)
+	}
+	cy += luField * u.sM
+
+	// session selector
+	cy += luSessGap * u.sM
+	name := strings.ToUpper(u.session().GetName())
+	sess := txtLabelSession
+	f.DrawText(cx, cy, sess, u.sS, colDim)
+	arrowL, arrowR := " ", " "
+	if len(u.sessions) > 1 {
+		arrowL, arrowR = "<", ">"
+	}
+	line := fmt.Sprintf("%s %s %s", arrowL, name, arrowR)
+	f.DrawText(cx+TextWidth(sess+"  ", u.sS), cy, line, u.sS, colAccent)
+	badge := sessionBadge(u.session().GetType())
+	f.DrawText(px+pw-6*u.sM-TextWidth(badge, u.sS), cy, badge, u.sS, colEmber)
+	cy += (luSess + luMsgGap) * u.sM
+
+	// pam info messages
+	for i := max(0, len(u.msgs)-2); i < len(u.msgs); i++ {
+		msg := u.msgs[i]
+		maxChars := (pw - 12*u.sM) / (glyphW * u.sS)
+		if len(msg) > maxChars {
+			msg = msg[:maxChars]
+		}
+		f.DrawText(cx, cy, msg, u.sS, colAmber)
+		cy += luMsg * u.sM
+	}
+
+	u.renderStatus(f, px, py, pw, ph, now)
+	u.renderHints(f, px, py, pw, ph)
+}
+
+// renderField draws label + boxed input returns next y
+func (u *UI) renderField(f *Frame, x, y, w int, label, value string, focused, secret bool, now float64) int {
+	f.DrawText(x, y, label, u.sS, colDim)
+	y += 8*u.sS + u.sM
+
+	bh := 8*u.sM + 4*u.sM
+	f.FillRect(x, y, w, bh, colField)
+	border := dim(colAccent, 90)
+	if focused {
+		pulse := uint32(170 + 80*math.Sin(now*4))
+		border = dim(colAccent, pulse)
+	}
+	f.Border(x, y, w, bh, border)
+
+	tx, ty := x+2*u.sM, y+2*u.sM
+	if secret {
+		// chunky blocks instead of glyphs
+		bs := 5 * u.sM
+		for i := 0; i < len(value) && tx+i*(bs+u.sM)+bs < x+w-2*u.sM; i++ {
+			f.FillRect(tx+i*(bs+u.sM), ty+u.sM, bs, bs, colAccent)
+		}
+		tx += len(value) * (bs + u.sM)
+	} else {
+		// clip from the left so the tail stays visible
+		maxChars := (w - 6*u.sM) / (glyphW * u.sM)
+		if len(value) > maxChars && maxChars > 0 {
+			value = value[len(value)-maxChars:]
+		}
+		f.DrawText(tx, ty, value, u.sM, colText)
+		tx += TextWidth(value, u.sM)
+	}
+	if focused && math.Mod(now, 1) < 0.55 {
+		f.FillRect(tx+u.sM/2, ty, u.sM*2, 8*u.sM, colAccent)
+	}
+	return y + bh + 3*u.sM
+}
+
+// the slot pam will fill kept dim so the panel never looks half empty
+func (u *UI) renderGhostField(f *Frame, x, y, w int, label string) {
+	f.DrawText(x, y, label, u.sS, dim(colDim, 130))
+	y += 8*u.sS + u.sM
+	bh := 12 * u.sM
+	f.BlendRect(x, y, w, bh, colField, 128)
+	f.Border(x, y, w, bh, dim(colAccent, 40))
+}
+
+func (u *UI) renderStatus(f *Frame, px, py, pw, ph int, now float64) {
+	y := py + ph - (luPadBot+luStatus)*u.sM
+
+	switch {
+	case u.phase == phaseBusy:
+		dots := strings.Repeat(".", 1+int(now*3)%3)
+		msg := u.busyMsg + dots
+		f.DrawText(px+(pw-TextWidth(u.busyMsg+"...", u.sS))/2, y, msg, u.sS, colAccent)
+
+	case u.errMsg != "" && now-u.errAt < errorDur:
+		w := TextWidth(u.errMsg, u.sS)
+		f.BlendRect(px+1, y-2*u.sM, pw-2, 8*u.sS+4*u.sM, colError, 70)
+		f.DrawText(px+(pw-w)/2, y, u.errMsg, u.sS, colError)
+
+	case u.powerArm != pb.PowerAction_POWER_ACTION_UNSPECIFIED && now-u.armAt < armDur:
+		msg := txtConfirmPower + powerKeyName(u.powerArm)
+		f.DrawText(px+(pw-TextWidth(msg, u.sS))/2, y, msg, u.sS, colAmber)
+	}
+}
+
+// hints live under the panel in smaller type
+func (u *UI) renderHints(f *Frame, px, py, pw, ph int) {
+	hints := []string{txtHintLogin}
+	if len(u.sessions) > 1 {
+		hints = append(hints, txtHintSession)
+	}
+	if u.caps.GetCanPoweroff() {
+		hints = append(hints, txtHintPoweroff)
+	}
+	if u.caps.GetCanReboot() {
+		hints = append(hints, txtHintReboot)
+	}
+	if u.caps.GetCanSuspend() {
+		hints = append(hints, txtHintSuspend)
+	}
+	line := strings.Join(hints, "   ")
+	scale := max(1, u.sS-1)
+	f.DrawTextShadow((u.w-TextWidth(line, scale))/2, py+ph+4*u.sM, line, scale, colDim, colShadow)
+}
+
+func (u *UI) corners(f *Frame, x, y, w, h int) {
+	l, t := 8*u.sM, u.sM
+	c := colAccent
+	// top-left
+	f.FillRect(x-t, y-t, l, t, c)
+	f.FillRect(x-t, y-t, t, l, c)
+	// top-right
+	f.FillRect(x+w+t-l, y-t, l, t, c)
+	f.FillRect(x+w, y-t, t, l, c)
+	// bottom-left
+	f.FillRect(x-t, y+h, l, t, c)
+	f.FillRect(x-t, y+h+t-l, t, l, c)
+	// bottom-right
+	f.FillRect(x+w+t-l, y+h, l, t, c)
+	f.FillRect(x+w, y+h+t-l, t, l, c)
+}
+
+func sessionBadge(t pb.SessionType) string {
+	switch t {
+	case pb.SessionType_SESSION_TYPE_WAYLAND:
+		return txtBadgeWayland
+	case pb.SessionType_SESSION_TYPE_X11:
+		return txtBadgeX11
+	default:
+		return txtBadgeTTY
+	}
+}
+
+// boot reveal and warp fade sit above the crt pass
+func (u *UI) renderOverlays(f *Frame, now float64) {
+	if now < bootDur {
+		k := now / bootDur
+		k = k * k * (3 - 2*k) // smoothstep
+		slit := int(float64(u.h) / 2 * k)
+		mid := u.h / 2
+		f.FillRect(0, 0, u.w, mid-slit, colShadow)
+		f.FillRect(0, mid+slit, u.w, u.h-(mid+slit), colShadow)
+		if slit < mid {
+			f.FillRect(0, mid-slit-u.sS, u.w, u.sS, dim(colAccent, uint32(256*(1-k))))
+			f.FillRect(0, mid+slit, u.w, u.sS, dim(colAccent, uint32(256*(1-k))))
+		}
+	}
+
+	if u.phase == phaseWarp {
+		k := (now - u.warpAt) / warpDur
+		if k > 1 {
+			k = 1
+		}
+		if k < 0.2 {
+			// white flash then fade to black
+			f.BlendRect(0, 0, u.w, u.h, colText, uint32(k/0.2*90))
+		} else {
+			a := uint32((k - 0.2) / 0.8 * 256)
+			f.BlendRect(0, 0, u.w, u.h, 0, a)
+		}
+	}
+}

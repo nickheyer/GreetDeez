@@ -41,33 +41,39 @@ func (d *Dispatcher) Unmarshal(b []byte, m proto.Message) error {
 	return proto.Unmarshal(b, m)
 }
 
+// DispatchRaw takes an encoded RpcEnvelope and returns an encoded RpcResult.
+// Every transport (webview bridge, unix socket) funnels through here.
+func (d *Dispatcher) DispatchRaw(raw []byte) []byte {
+	var env pb.RpcEnvelope
+	if err := d.Unmarshal(raw, &env); err != nil {
+		return d.resultBytes(nil, fmt.Errorf("envelope: %w", err))
+	}
+	h, ok := d.handlers[env.Method]
+	if !ok {
+		return d.resultBytes(nil, fmt.Errorf("unknown method: %s", env.Method))
+	}
+	resp, err := h(context.Background(), env.Payload)
+	if err != nil {
+		return d.resultBytes(nil, err)
+	}
+	respBytes, err := d.Marshal(resp)
+	if err != nil {
+		return d.resultBytes(nil, fmt.Errorf("marshal: %w", err))
+	}
+	return d.resultBytes(respBytes, nil)
+}
+
 func (d *Dispatcher) WebViewHandler() func(string) string {
 	return func(input string) string {
 		raw, err := base64.StdEncoding.DecodeString(input)
 		if err != nil {
-			return d.encodeResult(nil, fmt.Errorf("base64: %w", err))
+			return base64.StdEncoding.EncodeToString(d.resultBytes(nil, fmt.Errorf("base64: %w", err)))
 		}
-		var env pb.RpcEnvelope
-		if err := d.Unmarshal(raw, &env); err != nil {
-			return d.encodeResult(nil, fmt.Errorf("envelope: %w", err))
-		}
-		h, ok := d.handlers[env.Method]
-		if !ok {
-			return d.encodeResult(nil, fmt.Errorf("unknown method: %s", env.Method))
-		}
-		resp, err := h(context.Background(), env.Payload)
-		if err != nil {
-			return d.encodeResult(nil, err)
-		}
-		respBytes, err := d.Marshal(resp)
-		if err != nil {
-			return d.encodeResult(nil, fmt.Errorf("marshal: %w", err))
-		}
-		return d.encodeResult(respBytes, nil)
+		return base64.StdEncoding.EncodeToString(d.DispatchRaw(raw))
 	}
 }
 
-func (d *Dispatcher) encodeResult(payload []byte, err error) string {
+func (d *Dispatcher) resultBytes(payload []byte, err error) []byte {
 	result := &pb.RpcResult{}
 	if err != nil {
 		result.Error = err.Error()
@@ -78,9 +84,9 @@ func (d *Dispatcher) encodeResult(payload []byte, err error) string {
 	b, e := d.Marshal(result)
 	if e != nil {
 		slog.Error("failed to marshal pb.RpcResult", "error", e)
-		return ""
+		return nil
 	}
-	return base64.StdEncoding.EncodeToString(b)
+	return b
 }
 
 // Handle is called by generated registration code.

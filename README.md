@@ -12,11 +12,11 @@ Hackable display manager for [greetd](https://git.sr.ht/~kennylevinsen/greetd), 
 
 ## Themes
 
-GreetDeez ships with three built-in themes: `minimal` (default), `cyber`, and `doom`. Set the theme in `/etc/greetd/greetdeez.conf`:
+GreetDeez ships with three built-in themes: `minimal` (default) and `cyber` - HTML themes rendered in the webview - and [`metal`](#the-metal-theme), a software-rendered demoscene greeter that draws straight to the framebuffer with no webview, no compositor, and no toolkit. Set the theme in `/etc/greetd/greetdeez.conf`:
 
 ```toml
 [ui]
-theme = "cyber"   # "minimal" (default), "cyber", or "doom"
+theme = "cyber"   # "minimal" (default), "cyber", or "metal"
 ```
 
 To use your own custom front end, point `path` to a directory containing an `index.html` (and any JS/CSS it references). When `path` is set, it takes priority over the built-in theme. See [Building a Custom Front End](#building-a-custom-front-end) for details.
@@ -166,6 +166,29 @@ theme = "minimal"
 
 Environment variables (`GREETDEEZ_*`) override file values. For example: `GREETDEEZ_UI_THEME`, `GREETDEEZ_UI_PATH`, `GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_SCALE`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, `GREETDEEZ_POWER_ENABLED`, `GREETDEEZ_DEBUG`.
 
+## The Metal Theme
+
+You can speak the greetdeez protocol from anywhere, it doesn't have to be rendered in a webview.
+
+`metal` is a login screen rendered on bare metal. When it's active, greetdeez skips the entire graphics stack - no webkit2gtk, no cage, no Wayland, no GTK. The renderer talks to the backend over the same RPC socket any external front end can use (see [Speaking the protocol without a webview](#speaking-the-protocol-without-a-webview)).
+
+### Enabling it
+
+1. Set the theme in `/etc/greetd/greetdeez.conf`:
+
+   ```toml
+   [ui]
+   theme = "metal"
+   ```
+
+2. Remove cage from the greetd command in `/etc/greetd/config.toml` - metal needs the display to itself:
+
+   ```toml
+   [default_session]
+   command = "/usr/bin/greetdeez"
+   user = "greetdeez"
+   ```
+
 ## Building a Custom Front End
 
 GreetDeez loads your UI in a webview and injects a global RPC function (`window.__greetdeez_rpc__`) that your code uses to talk to the backend. The [`@nickheyer/greetdeez`](https://www.npmjs.com/package/@nickheyer/greetdeez) npm package wraps this into a typed client so you don't need to deal with the transport layer yourself.
@@ -184,7 +207,7 @@ import { createGreeterServiceClient } from "@nickheyer/greetdeez";
 const client = createGreeterServiceClient();
 ```
 
-When running inside GreetDeez, the client uses the injected RPC bridge automatically. During local development (outside the webview), it falls back to no-op defaults — or you can pass mock implementations:
+When running inside GreetDeez, the client uses the injected RPC bridge automatically. During local development (outside the webview), it falls back to no-op defaults - or you can pass mock implementations:
 
 ```ts
 const client = createGreeterServiceClient({
@@ -269,7 +292,14 @@ Build your project so it outputs an `index.html`, then point GreetDeez at it:
 path = "/path/to/your/build/output"
 ```
 
-Any framework (or none) works — the only requirement* is that your output is a static site that imports `@nickheyer/greetdeez`. This is of course just a client wrapper around the greetdeez protocol, which you could implement yourself, see: `proto/**/*.proto`
+## Speaking the Protocol Without a Webview
+
+The webview bridge is just one transport. When the metal theme runs, greetdeez serves the same protobuf protocol on a unix socket (`$XDG_RUNTIME_DIR/greetdeez.sock`, override with `GREETDEEZ_RPC_SOCK`), and the metal renderer is an ordinary client of it - so anything that can open a socket can be a greeter front end, in any language.
+
+Wire format, both directions: `u32` little-endian frame length, then that many bytes of binary protobuf. Requests are `transport.v1.RpcEnvelope` (`method` like `"greetdeez.v1.GreeterService/Login"`, `payload` = encoded request message), responses are `transport.v1.RpcResult`. One request per connection is in flight at a time. Schemas live in `proto/**/*.proto`; `pkg/rpc.SocketClient` and `ui/metal/client.go` are the reference Go client.
+
+
+Any framework (or none) works - the only requirement* is that your output is a static site that imports `@nickheyer/greetdeez`. This is of course just a client wrapper around the greetdeez protocol, which you could implement yourself, see: `proto/**/*.proto`
 
 
 ## License

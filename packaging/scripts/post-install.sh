@@ -8,6 +8,11 @@ if ! id -u greetdeez >/dev/null 2>&1; then
     useradd -r -s /usr/bin/nologin -d /var/lib/greetdeez -m greetdeez 2>/dev/null || true
 fi
 
+# metal theme needs direct drm and evdev access
+for grp in video render input; do
+    getent group "$grp" >/dev/null 2>&1 && usermod -aG "$grp" greetdeez 2>/dev/null || true
+done
+
 # state dir fallback when no tmpfiles.d
 install -d -m 0750 -o greetdeez -g greetdeez /var/cache/greetdeez 2>/dev/null || true
 

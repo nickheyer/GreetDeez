@@ -34,6 +34,9 @@ func main() {
 	devMode := flag.Bool("dev", false, "Enable dev mode (debug inspector, tolerate missing GREETD_SOCK)")
 	devUI := flag.String("dev-ui", "", "Navigate webview to this URL instead of embedded UI (e.g. http://localhost:5173)")
 	configPath := flag.String("config", config.DefaultConfigPath(), "Path to config file")
+	snapTheme := flag.String("snapshot", "", "Render a native theme's frames as PNGs and exit, no greetd/DRM needed (e.g. -snapshot metal)")
+	snapDir := flag.String("snapshot-dir", "./shots", "Directory for -snapshot output")
+	snapSize := flag.String("snapshot-size", "1920x1080", "Resolution for -snapshot")
 	flag.Parse()
 
 	cfg := loadConfig(*configPath)
@@ -41,8 +44,33 @@ func main() {
 		setupLogging(true)
 	}
 
+	if *snapTheme != "" {
+		t, ok := uipkg.Native(*snapTheme)
+		if !ok || t.Snapshot == nil {
+			slog.Error("no native theme with snapshot support", "theme", *snapTheme)
+			os.Exit(1)
+		}
+		w, h := parseSize(*snapSize)
+		if err := t.Snapshot(*snapDir, w, h); err != nil {
+			slog.Error("snapshot failed", "theme", t.Name, "error", err)
+			os.Exit(1)
+		}
+		slog.Info("snapshot written", "theme", t.Name, "dir", *snapDir)
+		return
+	}
+
 	client := connectGreetd(*devMode, cfg.Auth.Timeout())
 	defer client.Close()
+
+	if t, ok := uipkg.Native(cfg.UI.Theme); ok && *devUI == "" && cfg.UI.Path == "" {
+		err := runNative(t, cfg, client)
+		if err == nil {
+			return
+		}
+		// a greeter that cannot come up locks people out fall back loudly
+		slog.Error("native theme failed, falling back to webview minimal", "theme", t.Name, "error", err)
+		cfg.UI.Theme = "minimal"
+	}
 
 	if !*devMode { // set wayland scaling via wlr protocol
 		binds.ConfigureOutputScale(cfg.Window.Scale)
@@ -96,6 +124,42 @@ func main() {
 	}()
 
 	w.Run()
+}
+
+// runNative serves the protocol on a unix socket and hands the screen
+// to the theme's own renderer. Returns nil when the greeter is done
+// (session started or shutdown requested).
+func runNative(t uipkg.NativeTheme, cfg config.Config, client *greetd.Client) error {
+	srv := server.New(client, &cfg)
+	// always binary protobuf on the socket one wire format for every client
+	dispatcher := rpc.NewDispatcher(false)
+	greetdeezv1.RegisterGreeterServiceServer(dispatcher, srv)
+
+	sock, err := rpc.ServeSocket(rpcSocketPath(), dispatcher)
+	if err != nil {
+		return fmt.Errorf("rpc socket: %w", err)
+	}
+	defer sock.Close()
+
+	return t.Run(sock.Path(), cfg.Auth.Timeout())
+}
+
+func rpcSocketPath() string {
+	if p := os.Getenv("GREETDEEZ_RPC_SOCK"); p != "" {
+		return p
+	}
+	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
+		return path.Join(dir, "greetdeez.sock")
+	}
+	return fmt.Sprintf("/tmp/greetdeez-%d.sock", os.Getuid())
+}
+
+func parseSize(s string) (int, int) {
+	var w, h int
+	if _, err := fmt.Sscanf(s, "%dx%d", &w, &h); err != nil || w < 320 || h < 240 {
+		return 1920, 1080
+	}
+	return w, h
 }
 
 func loadConfig(path string) config.Config {
