@@ -22,6 +22,7 @@ type scriptedGreeter struct {
 	infoMsg     string
 	failStart   bool
 	begun       string
+	beginCalls  int
 	startedWith string
 	savedUser   string
 }
@@ -56,6 +57,7 @@ func (s *scriptedGreeter) BeginAuth(_ context.Context, req *pb.BeginAuthRequest)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.begun = req.Username
+	s.beginCalls++
 	step := &pb.AuthStep{Prompt: &pb.AuthPrompt{Type: pb.PromptType_PROMPT_TYPE_SECRET, Message: "Password:"}}
 	if s.infoMsg != "" {
 		step.Messages = []string{s.infoMsg}
@@ -223,9 +225,10 @@ func TestUISessionCycleAndEscape(t *testing.T) {
 	if u.session().GetName() != "i3" {
 		t.Fatalf("start session = %q", u.session().GetName())
 	}
-	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
+	// arrows cycle the session, tab must not
+	u.HandleKey(KeyEvent{Code: keyRight, Down: true}, now)
 	if u.session().GetName() != "sway" {
-		t.Errorf("after tab = %q, want sway", u.session().GetName())
+		t.Errorf("after right = %q, want sway", u.session().GetName())
 	}
 	u.HandleKey(KeyEvent{Code: keyLeft, Down: true}, now)
 	if u.session().GetName() != "i3" {
@@ -239,6 +242,126 @@ func TestUISessionCycleAndEscape(t *testing.T) {
 	if u.phase != phaseUser {
 		t.Errorf("esc should return to user phase, got %d", u.phase)
 	}
+
+	// arrows still switch session while the prompt is up
+	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
+	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
+	u.HandleKey(KeyEvent{Code: keyDown, Down: true}, now)
+	if u.session().GetName() != "sway" {
+		t.Errorf("prompt phase down arrow = %q, want sway", u.session().GetName())
+	}
+}
+
+func TestUITabMovesBetweenFields(t *testing.T) {
+	g := &scriptedGreeter{password: "x"}
+	u := newTestUI(t, g)
+	now := 1.0
+
+	// tab with a username advances into the pam prompt (the next field)
+	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
+	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
+	if g.begun != "prefill" {
+		t.Errorf("tab should begin auth for %q, got %q", "prefill", g.begun)
+	}
+
+	// tab from the prompt wraps back to the login field
+	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
+	if u.phase != phaseUser {
+		t.Errorf("tab in prompt should return to user phase, got %d", u.phase)
+	}
+	if string(u.username) != "prefill" {
+		t.Errorf("username must survive the round trip, got %q", string(u.username))
+	}
+
+	// tab with an empty username has no next field to go to
+	u.HandleKey(KeyEvent{Code: keyLeftCtrl, Down: true}, now)
+	u.HandleKey(KeyEvent{Code: keyBackspace, Down: true}, now)
+	u.HandleKey(KeyEvent{Code: keyLeftCtrl, Down: false}, now)
+	g.mu.Lock()
+	g.begun = ""
+	g.mu.Unlock()
+	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
+	if u.phase != phaseUser {
+		t.Errorf("tab on empty username should stay put, got phase %d", u.phase)
+	}
+}
+
+func TestUIEnterSubmitsEvenWhenEmpty(t *testing.T) {
+	g := &scriptedGreeter{password: "x"}
+	u := newTestUI(t, g)
+	now := 1.0
+
+	// clear the prefill then submit anyway: the backend decides
+	u.HandleKey(KeyEvent{Code: keyLeftCtrl, Down: true}, now)
+	u.HandleKey(KeyEvent{Code: keyBackspace, Down: true}, now)
+	u.HandleKey(KeyEvent{Code: keyLeftCtrl, Down: false}, now)
+	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
+	waitFor(t, u, &now, func() bool { return u.phase != phaseBusy })
+	g.mu.Lock()
+	begun, calls := g.begun, g.beginCalls
+	g.mu.Unlock()
+	if calls != 1 || begun != "" {
+		t.Errorf("BeginAuth calls = %d with user %q, want 1 call with empty user", calls, begun)
+	}
+}
+
+func TestUIMouseClicksAndWheel(t *testing.T) {
+	u := newTestUI(t, &scriptedGreeter{password: "x"})
+	now := 1.0
+	f := NewFrame(u.w, u.h)
+	u.Render(f, now) // capture hit regions
+
+	// wheel walks the session list
+	if u.session().GetName() != "i3" {
+		t.Fatalf("start session = %q", u.session().GetName())
+	}
+	u.HandleMouse(MouseEvent{Wheel: -1}, now)
+	if u.session().GetName() != "sway" {
+		t.Errorf("wheel down = %q, want sway", u.session().GetName())
+	}
+
+	// click the right half of the session row cycles forward
+	sx := u.hitSess.x + u.hitSess.w - 2
+	sy := u.hitSess.y + u.hitSess.h/2
+	u.HandleMouse(MouseEvent{Abs: true, X: float64(sx), Y: float64(sy)}, now)
+	u.HandleMouse(MouseEvent{Abs: true, X: float64(sx), Y: float64(sy), Btn: 1, Down: true}, now)
+	if u.session().GetName() != "i3" {
+		t.Errorf("session click = %q, want i3", u.session().GetName())
+	}
+
+	// clicking the ghost password field with a username begins auth
+	px := u.hitPrompt.x + u.hitPrompt.w/2
+	py := u.hitPrompt.y + u.hitPrompt.h/2
+	u.HandleMouse(MouseEvent{Abs: true, X: float64(px), Y: float64(py)}, now)
+	u.HandleMouse(MouseEvent{Abs: true, X: float64(px), Y: float64(py), Btn: 1, Down: true}, now)
+	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
+
+	// clicking the login field cancels back out of the prompt
+	u.Render(f, now)
+	ux := u.hitUser.x + u.hitUser.w/2
+	uy := u.hitUser.y + u.hitUser.h/2
+	u.HandleMouse(MouseEvent{Abs: true, X: float64(ux), Y: float64(uy)}, now)
+	u.HandleMouse(MouseEvent{Abs: true, X: float64(ux), Y: float64(uy), Btn: 1, Down: true}, now)
+	if u.phase != phaseUser {
+		t.Errorf("login field click should refocus login, got phase %d", u.phase)
+	}
+}
+
+func TestUICursorRendersAfterMouseSeen(t *testing.T) {
+	u := newTestUI(t, &scriptedGreeter{})
+	f := NewFrame(u.w, u.h)
+
+	u.Render(f, 1.0)
+	if u.mSeen {
+		t.Fatal("no mouse event yet")
+	}
+	u.HandleMouse(MouseEvent{DX: 10, DY: 5}, 1.0)
+	if !u.mSeen {
+		t.Fatal("mouse should be tracked after motion")
+	}
+	u.Render(f, 1.1) // must not panic with trail and cursor active
+	u.HandleMouse(MouseEvent{Abs: true, X: 5, Y: 5, Btn: 1, Down: true}, 1.2)
+	u.Render(f, 1.3)
 }
 
 func TestUIStartSessionFailureRecovers(t *testing.T) {

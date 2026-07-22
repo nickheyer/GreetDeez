@@ -44,10 +44,10 @@ nfpms:
     contents:
       - src: config/greetd.toml
         dst: /etc/greetd/greetd.toml
-        type: config
+        type: config|noreplace
       - src: config/greetdeez.conf
         dst: /etc/greetd/greetdeez.conf
-        type: config
+        type: config|noreplace
       - src: packaging/sysusers.d/greetdeez.conf
         dst: /usr/lib/sysusers.d/greetdeez.conf
       - src: packaging/tmpfiles.d/greetdeez.conf

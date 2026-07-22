@@ -14,12 +14,36 @@ const (
 	sinMask  = sinSteps - 1
 )
 
+const (
+	blobCount = 5
+	blobLutN  = 512
+)
+
+// blob is one lava body drifting through the plasma grid.
+type blob struct {
+	x, y   float64
+	r      float64 // base radius in grid px
+	vx, vy float64
+	phase  float64 // desyncs the buoyancy wobble per blob
+}
+
 type Plasma struct {
 	w, h int // low-res grid
 	pal  [256]uint32
 	sin  [sinSteps]int32 // -127..127
 	dist []uint16        // radial table scaled for sin lookups
 	idx  []uint8         // palette index buffer
+
+	// lava layer: blobs write a half-res heat field that glows ember
+	// over the palette, and the pointer stirs it around
+	heat    []uint8
+	glow    [256]uint32 // heat -> additive ember color
+	blobs   [blobCount]blob
+	lut     [blobLutN + 1]uint8 // normalized d^2 -> heat falloff
+	t       float64
+	px, py  float64 // pointer in grid coords
+	energy  float64 // pointer heat, spikes with motion and clicks, decays
+	tracked bool    // pointer has been seen at least once
 }
 
 func NewPlasma(w, h int) *Plasma {
@@ -36,8 +60,155 @@ func NewPlasma(w, h int) *Plasma {
 		}
 	}
 	p.idx = make([]uint8, w*h)
+	p.heat = make([]uint8, w*h)
 	p.buildPalette()
+	p.buildLava()
 	return p
+}
+
+func (p *Plasma) buildLava() {
+	// smooth metaball falloff: (1-q)^2 over normalized squared distance
+	for i := 0; i <= blobLutN; i++ {
+		q := float64(i) / blobLutN
+		p.lut[i] = uint8(150 * (1 - q) * (1 - q))
+	}
+	// ember ramp: deep red-orange up into near-white cores
+	for h := 0; h < 256; h++ {
+		r := min(uint32(h)*2, 255)
+		g := uint32(h) * 3 / 5
+		b := uint32(h) / 5
+		if h > 190 { // hot core bleaches toward white
+			k := uint32(h-190) * 2
+			g = min(g+k, 255)
+			b = min(b+k, 255)
+		}
+		p.glow[h] = rgb(r, g, b)
+	}
+	rng := rand.New(rand.NewSource(0x1a7a))
+	for i := range p.blobs {
+		p.blobs[i] = blob{
+			x:     (0.15 + 0.7*rng.Float64()) * float64(p.w),
+			y:     (0.2 + 0.6*rng.Float64()) * float64(p.h),
+			r:     float64(p.h) * (0.06 + 0.05*rng.Float64()),
+			phase: rng.Float64() * 2 * math.Pi,
+		}
+	}
+}
+
+// SetPointer feeds pointer position (grid coords) and speed (grid px moved).
+func (p *Plasma) SetPointer(x, y, speed float64) {
+	p.px, p.py = x, y
+	p.tracked = true
+	p.energy = math.Min(1, p.energy+speed*0.012)
+}
+
+// Pulse is a click splash: heat spike plus a shove on every blob.
+func (p *Plasma) Pulse() {
+	if !p.tracked {
+		return
+	}
+	p.energy = 1
+	for i := range p.blobs {
+		b := &p.blobs[i]
+		dx, dy := b.x-p.px, b.y-p.py
+		d := math.Hypot(dx, dy) + 8
+		kick := 900 / d
+		b.vx += dx / d * kick
+		b.vy += dy / d * kick
+	}
+}
+
+// Update advances the lava: buoyancy wander, pointer attraction, damping.
+func (p *Plasma) Update(dt float64) {
+	p.t += dt
+	p.energy *= math.Exp(-dt * 1.6)
+	w, h := float64(p.w), float64(p.h)
+	for i := range p.blobs {
+		b := &p.blobs[i]
+		// slow convection cells: rise, stall, sink
+		b.vx += math.Sin(p.t*0.11+b.phase*2.3) * 3.2 * dt
+		b.vy += math.Sin(p.t*0.17+b.phase) * 4.6 * dt
+		if p.tracked && p.energy > 0.02 {
+			// lazy drift toward the pointer while it is moving
+			dx, dy := p.px-b.x, p.py-b.y
+			d := math.Hypot(dx, dy) + 24
+			pull := p.energy * 140 * dt / d
+			b.vx += dx * pull
+			b.vy += dy * pull
+		}
+		damp := math.Exp(-dt * 0.7)
+		b.vx *= damp
+		b.vy *= damp
+		b.x += b.vx * dt
+		b.y += b.vy * dt
+		// soft walls keep the lava on screen
+		if b.x < b.r*0.5 {
+			b.x, b.vx = b.r*0.5, math.Abs(b.vx)*0.6
+		}
+		if b.x > w-b.r*0.5 {
+			b.x, b.vx = w-b.r*0.5, -math.Abs(b.vx)*0.6
+		}
+		if b.y < b.r*0.5 {
+			b.y, b.vy = b.r*0.5, math.Abs(b.vy)*0.6
+		}
+		if b.y > h-b.r*0.5 {
+			b.y, b.vy = h-b.r*0.5, -math.Abs(b.vy)*0.6
+		}
+	}
+}
+
+// stampHeat rebuilds the half-res heat field from blobs and pointer.
+func (p *Plasma) stampHeat() {
+	for i := range p.heat {
+		p.heat[i] = 0
+	}
+	type stamp struct {
+		x, y, r float64
+		gain    uint32 // 0..256 scales the falloff
+	}
+	stamps := make([]stamp, 0, blobCount+1)
+	for i := range p.blobs {
+		b := &p.blobs[i]
+		re := b.r * (1 + 0.15*math.Sin(p.t*0.4+b.phase))
+		stamps = append(stamps, stamp{b.x, b.y, re, 256})
+	}
+	if p.tracked && p.energy > 0.02 {
+		// the pointer is its own small hot blob so wiggling the mouse
+		// literally stirs light into the lava
+		r := 6 + p.energy*float64(p.h)*0.05
+		stamps = append(stamps, stamp{p.px, p.py, r, uint32(90 + 166*p.energy)})
+	}
+	for _, s := range stamps {
+		r := int(s.r)
+		if r < 2 {
+			continue
+		}
+		// fixed point: lutIndex = d2 * blobLutN / r^2
+		invR := (blobLutN << 12) / int(s.r*s.r)
+		bx, by := int(s.x), int(s.y)
+		y0, y1 := max(by-r, 0), min(by+r, p.h-1)
+		x0, x1 := max(bx-r, 0), min(bx+r, p.w-1)
+		for y := y0; y <= y1; y++ {
+			dy := y - by
+			dy2 := dy * dy
+			row := p.heat[y*p.w : (y+1)*p.w]
+			dx := x0 - bx
+			d2 := dx*dx + dy2
+			step := 2*dx + 1
+			for x := x0; x <= x1; x++ {
+				li := (d2 * invR) >> 12
+				if li <= blobLutN {
+					v := uint32(row[x]) + uint32(p.lut[li])*s.gain>>8
+					if v > 255 {
+						v = 255
+					}
+					row[x] = uint8(v)
+				}
+				d2 += step
+				step += 2
+			}
+		}
+	}
 }
 
 // cosine palette dark steel blues into teal with ember highlights
@@ -72,6 +243,8 @@ func (p *Plasma) Render(f *Frame, t float64) {
 	t3 := int32(t*44) & sinMask
 	t4 := int32(t*31) & sinMask
 
+	p.stampHeat()
+
 	parallelRows(p.h, func(y0, y1 int) {
 		for y := y0; y < y1; y++ {
 			ys := p.sin[(int32(y*7)+t2)&sinMask]
@@ -87,18 +260,23 @@ func (p *Plasma) Render(f *Frame, t float64) {
 		}
 	})
 
-	// expand 2x through palette
+	// expand 2x through palette with the lava glow layered on top
 	parallelRows(f.H, func(y0, y1 int) {
 		for y := y0; y < y1; y++ {
 			sy := min(y/2, p.h-1)
 			src := p.idx[sy*p.w : (sy+1)*p.w]
+			hrow := p.heat[sy*p.w : (sy+1)*p.w]
 			dst := f.Pix[y*f.W : (y+1)*f.W]
 			for x := range dst {
 				sx := x / 2
 				if sx >= p.w {
 					sx = p.w - 1
 				}
-				dst[x] = p.pal[src[sx]]
+				c := p.pal[src[sx]]
+				if h := hrow[sx]; h != 0 {
+					c = addColor(c, p.glow[h])
+				}
+				dst[x] = c
 			}
 		}
 	})

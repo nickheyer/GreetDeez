@@ -163,11 +163,32 @@ func TestCancelAuth(t *testing.T) {
 	}
 }
 
-func TestDevModeAuthSucceeds(t *testing.T) {
+func TestDevModeAuthConversation(t *testing.T) {
 	s := New(nil, &config.Config{})
+
+	// begin prompts instead of instantly succeeding so dev sessions can
+	// exercise the whole flow
 	step, err := s.BeginAuth(context.Background(), &pb.BeginAuthRequest{Username: "nick"})
+	if err != nil || step.GetPrompt() == nil || step.Success {
+		t.Fatalf("dev BeginAuth should prompt: %v %+v", err, step)
+	}
+
+	// wrong password fails like the real thing
+	step, err = s.RespondAuth(context.Background(), &pb.RespondAuthRequest{Response: "wrong"})
+	if err != nil || step.GetError() == "" || step.Success {
+		t.Fatalf("dev RespondAuth(wrong): %v %+v", err, step)
+	}
+
+	// the dev password logs in
+	step, err = s.RespondAuth(context.Background(), &pb.RespondAuthRequest{Response: devPassword})
 	if err != nil || !step.Success {
-		t.Fatalf("dev BeginAuth: %v %+v", err, step)
+		t.Fatalf("dev RespondAuth(devPassword): %v %+v", err, step)
+	}
+
+	// empty username is rejected at begin
+	step, err = s.BeginAuth(context.Background(), &pb.BeginAuthRequest{Username: ""})
+	if err != nil || step.GetError() == "" {
+		t.Fatalf("dev BeginAuth(empty): %v %+v", err, step)
 	}
 }
 

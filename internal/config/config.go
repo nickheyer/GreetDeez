@@ -122,6 +122,9 @@ func detectDefaults() Config {
 			Dirs:       detectSessionDirs(),
 			X11Wrapper: []string{"startx", "/usr/bin/env"},
 		},
+		UI: UIConfig{
+			Theme: "metal",
+		},
 	}
 }
 

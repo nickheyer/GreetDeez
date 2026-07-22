@@ -15,8 +15,7 @@ import (
 // esc at the login screen quits.
 func Run(socketPath string, timeout time.Duration, dev bool, output string) error {
 	if os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("DISPLAY") != "" {
-		return fmt.Errorf("metal theme drives DRM directly and cannot run under a compositor; " +
-			`use command = "/usr/bin/greetdeez" (no cage) in /etc/greetd/config.toml`)
+		return fmt.Errorf("metal DRM path cannot run under a compositor")
 	}
 
 	be, err := DialBackend(socketPath, timeout)
@@ -36,9 +35,12 @@ func Run(socketPath string, timeout time.Duration, dev bool, output string) erro
 		return fmt.Errorf("input: %w", err)
 	}
 
+	mice := OpenMice() // optional keyboard-only boxes are fine
+
 	vt := setupVT()
 	defer func() {
 		// order matters restore text mode after the last flip
+		mice.Close()
 		kb.Close()
 		surf.Close()
 		vt.restore()
@@ -57,13 +59,9 @@ func Run(socketPath string, timeout time.Duration, dev bool, output string) erro
 
 	w, h := surf.Size()
 	slog.Info("metal: up", "resolution", fmt.Sprintf("%dx%d", w, h))
-	ui := NewUI(be, w, h)
-	ui.Dev = dev
-	frame := NewFrame(w, h)
+	loop := NewLoop(be, w, h, dev)
 
-	start := time.Now()
-	last := start
-	for !ui.Done {
+	for !loop.Done() {
 		select {
 		case sig := <-sigCh:
 			slog.Info("metal: signal, shutting down", "signal", sig)
@@ -71,31 +69,24 @@ func Run(socketPath string, timeout time.Duration, dev bool, output string) erro
 		default:
 		}
 
-		now := time.Since(start).Seconds()
-		dt := time.Since(last).Seconds()
-		last = time.Now()
-		if dt > 0.1 {
-			dt = 0.1
-		}
-
-	keys:
+	events:
 		for {
 			select {
 			case ev := <-kb.Ch:
-				ui.HandleKey(ev, now)
+				loop.Key(ev)
+			case ev := <-mice.Ch:
+				loop.Mouse(ev)
 			default:
-				break keys
+				break events
 			}
 		}
 
-		ui.Update(dt, now)
-		ui.Render(frame, now)
-		if err := surf.Present(frame); err != nil {
+		if err := surf.Present(loop.Step()); err != nil {
 			return fmt.Errorf("present: %w", err)
 		}
 	}
 
-	if ui.Success {
+	if loop.Success() {
 		slog.Info("metal: session start requested, handing off")
 	}
 	return nil

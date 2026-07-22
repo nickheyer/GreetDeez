@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"os"
 	"strings"
 	"time"
 
 	"github.com/nickheyer/greetdeez/ui/metal"
+	"github.com/nickheyer/greetdeez/ui/metal/gtkwin"
 )
 
 // NativeTheme is a theme that renders the login screen itself instead
@@ -22,7 +24,14 @@ type NativeTheme struct {
 // the manifest of built-in native themes, next to the embedded webview
 // themes in embed.go — the backend never references these packages
 var natives = map[string]NativeTheme{
-	"metal": {Name: "metal", Run: metal.Run},
+	"metal": {Name: "metal", Run: runMetal},
+}
+
+func runMetal(socketPath string, timeout time.Duration, dev bool, output string) error {
+	if os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("DISPLAY") != "" {
+		return gtkwin.Run(socketPath, timeout, dev, output)
+	}
+	return metal.Run(socketPath, timeout, dev, output)
 }
 
 // Native returns the built-in native theme with the given name.

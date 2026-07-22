@@ -44,14 +44,9 @@ ui:
 
 # Dev
 dev: build
-	cage -s -- ./bin/greetdeez -dev
+	GREETDEEZ_UI_THEME=minimal ./bin/greetdeez -dev
 
-# metal drives DRM itself so this must run from a real TTY, not a desktop terminal
 dev-metal: build
-	@if [ -n "$$WAYLAND_DISPLAY" ] || [ -n "$$DISPLAY" ]; then \
-		echo "dev-metal needs the display to itself: switch to a TTY (ctrl+alt+F3) and run it there"; \
-		exit 1; \
-	fi
 	GREETDEEZ_UI_THEME=metal ./bin/greetdeez -dev
 
 # Install
@@ -61,7 +56,11 @@ PREFIX ?= /usr/local
 install: build
 	install -Dm755 bin/greetdeez $(DESTDIR)$(PREFIX)/bin/greetdeez
 	install -Dm644 config/greetd.toml $(DESTDIR)/etc/greetd/greetd.toml
-	install -Dm644 config/greetdeez.conf $(DESTDIR)/etc/greetd/greetdeez.conf
+	@if [ -f $(DESTDIR)/etc/greetd/greetdeez.conf ]; then \
+		echo "keeping existing greetdeez.conf"; \
+	else \
+		install -Dm644 config/greetdeez.conf $(DESTDIR)/etc/greetd/greetdeez.conf; \
+	fi
 	install -Dm644 packaging/sysusers.d/greetdeez.conf $(DESTDIR)/usr/lib/sysusers.d/greetdeez.conf
 	install -Dm644 packaging/tmpfiles.d/greetdeez.conf $(DESTDIR)/usr/lib/tmpfiles.d/greetdeez.conf
 	install -Dm755 packaging/scripts/post-install.sh $(DESTDIR)/usr/share/greetdeez/post-install.sh

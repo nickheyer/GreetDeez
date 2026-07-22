@@ -15,8 +15,8 @@ import (
 	"github.com/nickheyer/greetdeez/internal/state"
 )
 
-// generic error keeps pam details out of ui
 const authFailedMsg = "authentication failed"
+const devPassword = "deez"
 
 type Server struct {
 	pb.UnimplementedGreeterServiceServer
@@ -56,7 +56,13 @@ func (s *Server) BeginAuth(ctx context.Context, req *pb.BeginAuthRequest) (*pb.A
 
 	if s.client == nil {
 		slog.Debug("dev: beginAuth", "username", req.Username)
-		return &pb.AuthStep{Success: true}, nil
+		if req.Username == "" {
+			return &pb.AuthStep{Error: authFailedMsg}, nil
+		}
+		return &pb.AuthStep{
+			Prompt:   &pb.AuthPrompt{Type: pb.PromptType_PROMPT_TYPE_SECRET, Message: "Password:"},
+			Messages: nil,
+		}, nil
 	}
 
 	s.client.CancelSession(ctx)
@@ -69,7 +75,10 @@ func (s *Server) RespondAuth(ctx context.Context, req *pb.RespondAuthRequest) (*
 	defer s.mu.Unlock()
 
 	if s.client == nil {
-		return &pb.AuthStep{Success: true}, nil
+		if req.Response == devPassword {
+			return &pb.AuthStep{Success: true}, nil
+		}
+		return &pb.AuthStep{Error: authFailedMsg}, nil
 	}
 
 	resp, err := s.client.PostAuthResponse(ctx, &req.Response)

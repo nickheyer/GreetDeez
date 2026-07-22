@@ -41,6 +41,16 @@ func main() {
 		setupLogging(true)
 	}
 
+	// greetdeez is the single entry point for every theme
+	_, isNative := uipkg.Native(cfg.UI.Theme)
+	needsWebview := !isNative || cfg.UI.Path != "" || *devUI != ""
+	if needsWebview && !*devMode && !haveCompositor() {
+		if err := relaunchUnderCage(); err != nil {
+			slog.Error("webview theme needs a compositor", "theme", cfg.UI.Theme, "error", err)
+			os.Exit(1)
+		}
+	}
+
 	client := connectGreetd(*devMode, cfg.Auth.Timeout())
 	defer client.Close()
 
@@ -50,7 +60,14 @@ func main() {
 			return
 		}
 		// a greeter that cannot come up locks people out fall back loudly
-		slog.Error("native theme failed, falling back to webview minimal", "theme", t.Name, "error", err)
+		slog.Error("native theme failed", "theme", t.Name, "error", err)
+		if !*devMode && !haveCompositor() {
+			if err := relaunchUnderCage(); err != nil {
+				slog.Error("no way to bring up a display", "error", err)
+				os.Exit(1)
+			}
+		}
+		slog.Error("falling back to webview minimal")
 		cfg.UI.Theme = "minimal"
 	}
 
@@ -124,6 +141,29 @@ func runNative(t uipkg.NativeTheme, cfg config.Config, client *greetd.Client, de
 	defer sock.Close()
 
 	return t.Run(sock.Path(), cfg.Auth.Timeout(), dev, cfg.Display.Output)
+}
+
+func haveCompositor() bool {
+	return os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("DISPLAY") != ""
+}
+
+// Execs cage wrapping this same binary with same args
+func relaunchUnderCage() error {
+	if os.Getenv("GREETDEEZ_STAGE2") != "" {
+		return fmt.Errorf("already relaunched under cage but no compositor appeared")
+	}
+	cagePath, err := exec.LookPath("cage")
+	if err != nil {
+		return fmt.Errorf("cage not found in PATH (install cage, or use the metal theme which needs no compositor)")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve own binary: %w", err)
+	}
+	argv := append([]string{"cage", "-s", "-m", "last", "--", self}, os.Args[1:]...)
+	env := append(os.Environ(), "GREETDEEZ_STAGE2=1")
+	slog.Info("relaunching under cage", "cage", cagePath)
+	return syscall.Exec(cagePath, argv, env)
 }
 
 func rpcSocketPath() string {

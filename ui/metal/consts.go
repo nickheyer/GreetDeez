@@ -32,7 +32,7 @@ const (
 
 	// under the panel
 	txtHintLogin    = "ENTER LOGIN"
-	txtHintSession  = "TAB SESSION"
+	txtHintSession  = "< > SESSION"
 	txtHintPoweroff = "F10 OFF"
 	txtHintReboot   = "F11 REBOOT"
 	txtHintSuspend  = "F12 SLEEP"

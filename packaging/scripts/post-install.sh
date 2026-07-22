@@ -29,15 +29,16 @@ if [ -f /etc/pam.d/greetd ] && ! grep -q 'pam_kwallet5' /etc/pam.d/greetd 2>/dev
 fi
 
 # --- greetd config ---
+# /etc/greetd/greetd.toml is the packaged default and stays package-owned;
+# /etc/greetd/config.toml is the live config and belongs to the admin.
+# Seed it once when missing, never touch an existing one (upgrades included).
 if [ -f /etc/greetd/config.toml ]; then
-    echo "==> Found existing greetd config for backup: /etc/greetd/config.toml"
-    mv /etc/greetd/config.toml /etc/greetd/config.bak
-    echo "==> Backed up existing greetd config: /etc/greetd/config.bak"
+    echo "==> Keeping existing /etc/greetd/config.toml"
+    echo "    (packaged default for reference: /etc/greetd/greetd.toml)"
+else
+    cp /etc/greetd/greetd.toml /etc/greetd/config.toml
+    echo "==> Installed greetd config: /etc/greetd/config.toml"
 fi
-
-echo "==> Installing packaged greetd config: /etc/greetd/greetd.toml"
-mv /etc/greetd/greetd.toml /etc/greetd/config.toml
-echo "==> Installed packaged greetd config: /etc/greetd/config.toml"
 
 # --- Enable greetd ---
 if command -v systemctl >/dev/null 2>&1; then

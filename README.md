@@ -8,15 +8,19 @@ Hackable display manager for [greetd](https://git.sr.ht/~kennylevinsen/greetd), 
 
 ![minimal](minimal.webp)
 
-> **This is the default theme.** It serves as an example and template for creating a custom front end for your login UI.
+> **This is the `metal` theme.** It embeds it's own compositor and runs in the frame buffer while speaking pure greetdeez protocol. It's the default theme currently.
+
+![minimal](minimal.webp)
+
+> **This is the `minimal` theme.** It serves as a template for creating a very simple and easy to comprehend custom front end for your login UI (I use "UI" and "theme" interchangeably).
 
 ## Themes
 
-GreetDeez ships with three built-in themes: `minimal` (default) and `cyber` - HTML themes rendered in the webview - and [`metal`](#the-metal-theme), a software-rendered demoscene greeter that draws straight to the framebuffer with no webview, no compositor, and no toolkit. Set the theme in `/etc/greetd/greetdeez.conf`:
+GreetDeez ships with three built-in themes: [`metal`](#the-metal-theme) (default), a software-rendered demoscene greeter, and `minimal` and `cyber` - HTML themes rendered in a webview. Every theme runs from the same greetd command (`/usr/bin/greetdeez`, no wrapper): metal renders natively, and for webview themes greetdeez launches its own [cage](https://github.com/cage-compositor/cage) compositor automatically. Set the theme in `/etc/greetd/greetdeez.conf`:
 
 ```toml
 [ui]
-theme = "cyber"   # "minimal" (default), "cyber", or "metal"
+theme = "cyber"   # "metal" (default), "minimal", or "cyber"
 ```
 
 To use your own custom front end, point `path` to a directory containing an `index.html` (and any JS/CSS it references). When `path` is set, it takes priority over the built-in theme. See [Building a Custom Front End](#building-a-custom-front-end) for details.
@@ -94,7 +98,7 @@ services.greetdeez.settings = {
 
 Requires: Go 1.26+, Node.js 20+, Docker, `libwebkit2gtk-4.1-dev`, `pkg-config`
 
-Runtime dependencies: `greetd`, `cage`, `webkit2gtk-4.1`
+Runtime dependencies: `greetd`, `webkit2gtk-4.1`, and `cage` (only exercised by webview themes; metal never touches it)
 
 ```sh
 make build
@@ -114,18 +118,20 @@ Package installs handle both of these automatically.
 
 ### greetd
 
-GreetDeez runs inside [cage](https://github.com/cage-compositor/cage) (a single-window Wayland compositor). The greetd config at `/etc/greetd/config.toml` should look like:
+GreetDeez is the single entry point for every theme, so the greetd config at `/etc/greetd/config.toml` is the same no matter which theme you use:
 
 ```toml
 [terminal]
 vt = 7
 
 [default_session]
-command = "cage -s -- /usr/bin/greetdeez"
+command = "/usr/bin/greetdeez"
 user = "greetdeez"
 ```
 
-This is installed automatically by the packages.
+Native themes (metal) drive the display themselves; webview themes launch their own [cage](https://github.com/cage-compositor/cage) (a single-window Wayland compositor) under the hood. Legacy configs that wrap greetdeez in cage (`command = "cage -s -- /usr/bin/greetdeez"`) keep working for every theme, metal included - it just renders into cage's window instead of driving DRM directly.
+
+This config is seeded automatically by the packages on first install, and an existing `/etc/greetd/config.toml` is never touched on upgrade.
 
 ### greetdeez.conf
 
@@ -166,7 +172,7 @@ enabled = true
 # x11_wrapper = ["startx", "/usr/bin/env"]
 
 [ui]
-theme = "minimal"
+theme = "metal"
 # path = "/path/to/your/custom/ui"
 ```
 
@@ -176,24 +182,29 @@ Environment variables (`GREETDEEZ_*`) override file values. For example: `GREETD
 
 You can speak the greetdeez protocol from anywhere, it doesn't have to be rendered in a webview.
 
-`metal` is a login screen rendered on bare metal. When it's active, greetdeez skips the entire graphics stack - no webkit2gtk, no cage, no Wayland, no GTK. The renderer talks to the backend over the same RPC socket any external front end can use (see [Speaking the protocol without a webview](#speaking-the-protocol-without-a-webview)).
+`metal` is a login screen rendered on bare metal, and the default theme. On a bare console greetdeez skips the entire graphics stack - no webkit2gtk, no cage, no Wayland - and draws straight to the framebuffer via DRM/KMS, reading keyboards and mice from evdev itself. If a compositor already owns the display (a cage-wrapped greetd config, or `-dev` on your desktop), the exact same renderer presents into a window instead. The renderer talks to the backend over the same RPC socket any external front end can use (see [Speaking the protocol without a webview](#speaking-the-protocol-without-a-webview)).
 
-### Enabling it
+It's enabled out of the box; to switch back explicitly:
 
-1. Set the theme in `/etc/greetd/greetdeez.conf`:
+```toml
+[ui]
+theme = "metal"
+```
 
-   ```toml
-   [ui]
-   theme = "metal"
-   ```
+For direct DRM rendering the greetdeez user needs to be in the `video` and `input` groups (package installs handle this).
 
-2. Remove cage from the greetd command in `/etc/greetd/config.toml` - metal needs the display to itself:
+### Controls
 
-   ```toml
-   [default_session]
-   command = "/usr/bin/greetdeez"
-   user = "greetdeez"
-   ```
+- **Type** to fill the focused field, **Enter** submits it - even half-filled, the backend gets to say no
+- **Tab** moves between fields, **arrow keys** (or scroll wheel) switch the session
+- **Mouse** does what you'd expect: click a field to focus it, click the session row to cycle it - and the lava in the background follows the pointer, so stir it
+- **F10/F11/F12** power off / reboot / suspend, pressed twice to confirm
+
+### Developing it
+
+`make dev-metal` on your desktop opens the theme in a normal window with full keyboard and mouse - no TTY, no VM, no cage. The same command from a bare TTY exercises the real DRM path.
+
+Without greetd there is nothing real to authenticate against, so dev mode scripts the conversation: any username gets a password prompt, the password `deez` logs in (warp animation, then exit), and anything else takes the failure path. Esc quits.
 
 ## Building a Custom Front End
 

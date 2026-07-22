@@ -110,6 +110,60 @@ func (f *Frame) Border(x, y, w, h int, c uint32) {
 	f.FillRect(x+w-1, y, 1, h, c)
 }
 
+// FillTri rasterizes a filled triangle by scanline.
+func (f *Frame) FillTri(x0, y0, x1, y1, x2, y2 int, c uint32) {
+	// sort by y
+	if y1 < y0 {
+		x0, y0, x1, y1 = x1, y1, x0, y0
+	}
+	if y2 < y0 {
+		x0, y0, x2, y2 = x2, y2, x0, y0
+	}
+	if y2 < y1 {
+		x1, y1, x2, y2 = x2, y2, x1, y1
+	}
+	if y0 == y2 {
+		return
+	}
+	// x on edge (ax,ay)-(bx,by) at row y
+	edge := func(ax, ay, bx, by, y int) int {
+		if by == ay {
+			return ax
+		}
+		return ax + (bx-ax)*(y-ay)/(by-ay)
+	}
+	for y := max(y0, 0); y <= min(y2, f.H-1); y++ {
+		xa := edge(x0, y0, x2, y2, y) // long edge
+		var xb int
+		if y < y1 {
+			xb = edge(x0, y0, x1, y1, y)
+		} else {
+			xb = edge(x1, y1, x2, y2, y)
+		}
+		if xb < xa {
+			xa, xb = xb, xa
+		}
+		f.FillRect(xa, y, xb-xa+1, 1, c)
+	}
+}
+
+// CircleAdd additively blends a filled circle, fading toward the rim.
+func (f *Frame) CircleAdd(cx, cy, r int, c uint32) {
+	if r <= 0 {
+		return
+	}
+	r2 := r * r
+	for dy := -r; dy <= r; dy++ {
+		for dx := -r; dx <= r; dx++ {
+			d2 := dx*dx + dy*dy
+			if d2 > r2 {
+				continue
+			}
+			f.Add(cx+dx, cy+dy, dim(c, uint32(256*(r2-d2)/r2)))
+		}
+	}
+}
+
 // parallelRows splits [0, h) into bands and runs fn on each in parallel.
 func parallelRows(h int, fn func(y0, y1 int)) {
 	n := runtime.GOMAXPROCS(0)

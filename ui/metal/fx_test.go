@@ -57,6 +57,50 @@ func TestPlasmaRenderFillsFrame(t *testing.T) {
 	}
 }
 
+func TestPlasmaLavaGlows(t *testing.T) {
+	f := NewFrame(64, 48)
+	p := NewPlasma(32, 24)
+	p.Render(f, 0)
+
+	total := func() (n int) {
+		for _, h := range p.heat {
+			if h > 0 {
+				n++
+			}
+		}
+		return
+	}
+	base := total()
+	if base == 0 {
+		t.Fatal("blobs should heat the field even before any pointer input")
+	}
+
+	// stirring the pointer adds its own hot spot
+	p.SetPointer(16, 12, 30)
+	p.Pulse()
+	p.Update(1.0 / 60)
+	p.Render(f, 0.1)
+	if total() <= base {
+		t.Error("pointer energy should add heat")
+	}
+}
+
+func TestPlasmaBlobsStayOnGrid(t *testing.T) {
+	p := NewPlasma(40, 30)
+	p.SetPointer(0, 0, 100)
+	p.Pulse() // shove everything hard
+	for i := 0; i < 600; i++ {
+		p.Update(1.0 / 30)
+	}
+	for i, b := range p.blobs {
+		if b.x < 0 || b.x > 40 || b.y < 0 || b.y > 30 {
+			t.Errorf("blob %d escaped to (%.1f, %.1f)", i, b.x, b.y)
+		}
+	}
+	// stamping after the abuse must not index out of bounds
+	p.stampHeat()
+}
+
 func TestStarfieldStaysInBounds(t *testing.T) {
 	f := NewFrame(100, 80)
 	s := NewStarfield(100, 80, 200)

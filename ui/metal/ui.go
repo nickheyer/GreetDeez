@@ -82,6 +82,17 @@ type UI struct {
 	mods     Mods
 	resCh    chan any
 
+	// pointer
+	mx, my float64
+	mSeen  bool
+	mDown  bool
+	trail  []trailPt
+
+	// clickable regions captured during render, hit-tested next frame
+	hitUser   rect
+	hitPrompt rect
+	hitSess   rect
+
 	// exit
 	Done    bool
 	Success bool
@@ -154,8 +165,19 @@ func (u *UI) cycleSession(dir int) {
 	}
 }
 
+// backToUser abandons the pam conversation and refocuses the login field.
+func (u *UI) backToUser() {
+	go u.be.CancelAuth(context.Background()) //nolint:errcheck
+	u.input = u.input[:0]
+	u.prompt = nil
+	u.phase = phaseUser
+}
+
 // ── input ───────────────────────────────────────────────────────
 
+// Keyboard model: tab moves between fields, arrows change the session,
+// enter always submits whatever is in the focused field and lets the
+// backend reject it.
 func (u *UI) HandleKey(ev KeyEvent, now float64) {
 	if u.mods.Track(ev.Code, ev.Down) || !ev.Down {
 		return
@@ -169,6 +191,9 @@ func (u *UI) HandleKey(ev KeyEvent, now float64) {
 	case phaseUser:
 		switch ev.Code {
 		case keyEnter, keyKpEnter:
+			u.beginAuth(now)
+		case keyTab:
+			// the next field is the pam prompt which needs a user first
 			if len(u.username) > 0 {
 				u.beginAuth(now)
 			}
@@ -182,7 +207,7 @@ func (u *UI) HandleKey(ev KeyEvent, now float64) {
 			} else if len(u.username) > 0 {
 				u.username = u.username[:len(u.username)-1]
 			}
-		case keyTab, keyRight, keyDown:
+		case keyRight, keyDown:
 			u.cycleSession(1)
 		case keyLeft, keyUp:
 			u.cycleSession(-1)
@@ -196,21 +221,100 @@ func (u *UI) HandleKey(ev KeyEvent, now float64) {
 		switch ev.Code {
 		case keyEnter, keyKpEnter:
 			u.respondAuth(now)
-		case keyEsc:
-			go u.be.CancelAuth(context.Background()) //nolint:errcheck
-			u.input = u.input[:0]
-			u.prompt = nil
-			u.phase = phaseUser
+		case keyTab, keyEsc:
+			// two fields so tab wraps back to login
+			u.backToUser()
 		case keyBackspace:
 			if u.mods.Ctrl() {
 				u.input = u.input[:0]
 			} else if len(u.input) > 0 {
 				u.input = u.input[:len(u.input)-1]
 			}
+		case keyRight, keyDown:
+			u.cycleSession(1)
+		case keyLeft, keyUp:
+			u.cycleSession(-1)
 		default:
 			if r := u.mods.Rune(ev.Code); r != 0 && len(u.input) < maxInputLen {
 				u.input = append(u.input, r)
 			}
+		}
+	}
+}
+
+// ── mouse ───────────────────────────────────────────────────────
+
+type rect struct{ x, y, w, h int }
+
+func (r rect) contains(x, y int) bool {
+	return x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h
+}
+
+type trailPt struct {
+	x, y float64
+	t    float64
+}
+
+// HandleMouse tracks the pointer, stirs the lava, and hit-tests clicks
+// against the regions captured on the previous frame.
+func (u *UI) HandleMouse(ev MouseEvent, now float64) {
+	var dx, dy float64
+	if ev.Abs {
+		dx, dy = ev.X-u.mx, ev.Y-u.my
+		u.mx, u.my = ev.X, ev.Y
+	} else {
+		dx, dy = ev.DX, ev.DY
+		u.mx += dx
+		u.my += dy
+	}
+	u.mx = math.Max(0, math.Min(float64(u.w-1), u.mx))
+	u.my = math.Max(0, math.Min(float64(u.h-1), u.my))
+
+	first := !u.mSeen
+	u.mSeen = true
+	if dx != 0 || dy != 0 {
+		speed := math.Hypot(dx, dy)
+		if first {
+			speed = 0 // a jump to the initial position is not motion
+		}
+		u.plasma.SetPointer(u.mx/2, u.my/2, speed/2)
+		u.trail = append(u.trail, trailPt{u.mx, u.my, now})
+		if len(u.trail) > 32 {
+			u.trail = u.trail[len(u.trail)-32:]
+		}
+	}
+
+	if ev.Wheel != 0 && (u.phase == phaseUser || u.phase == phasePrompt) {
+		// wheel down walks forward through the session list
+		u.cycleSession(-ev.Wheel)
+	}
+
+	if ev.Btn != 0 {
+		if ev.Btn == 1 {
+			u.mDown = ev.Down
+		}
+		if ev.Down {
+			u.plasma.Pulse()
+			if ev.Btn == 1 {
+				u.click(int(u.mx), int(u.my), now)
+			}
+		}
+	}
+}
+
+func (u *UI) click(x, y int, now float64) {
+	switch {
+	case u.hitSess.contains(x, y) && (u.phase == phaseUser || u.phase == phasePrompt):
+		if x < u.hitSess.x+u.hitSess.w/2 {
+			u.cycleSession(-1)
+		} else {
+			u.cycleSession(1)
+		}
+	case u.phase == phasePrompt && u.hitUser.contains(x, y):
+		u.backToUser()
+	case u.phase == phaseUser && u.hitPrompt.contains(x, y):
+		if len(u.username) > 0 {
+			u.beginAuth(now)
 		}
 	}
 }
@@ -389,6 +493,7 @@ drained:
 		}
 	}
 
+	u.plasma.Update(dt)
 	u.stars.Update(float32(dt))
 	u.scroller.Update(dt, u.w)
 }
@@ -407,6 +512,50 @@ func (u *UI) Render(f *Frame, now float64) {
 
 	u.crt.Apply(f)
 	u.renderOverlays(f, now)
+
+	if u.mSeen && u.phase != phaseWarp {
+		u.renderCursor(f, now)
+	}
+}
+
+// renderCursor draws the pointer: a comet trail, an ember glow, and a
+// sharp delta-wing arrow that tightens while the button is held.
+func (u *UI) renderCursor(f *Frame, now float64) {
+	// drop trail points older than the fade window
+	const fade = 0.35
+	for len(u.trail) > 0 && now-u.trail[0].t > fade {
+		u.trail = u.trail[1:]
+	}
+	for _, p := range u.trail {
+		age := (now - p.t) / fade
+		a := uint32(90 * (1 - age))
+		r := max(1, int(float64(u.sM)*2*(1-age)))
+		f.CircleAdd(int(p.x), int(p.y), r, dim(colAccent, a))
+	}
+
+	mx, my := int(u.mx), int(u.my)
+
+	// warm halo so the pointer feels like part of the lava
+	f.CircleAdd(mx, my, 5*u.sM, dim(colEmber, 26))
+	f.CircleAdd(mx, my, 2*u.sM, dim(colAccent, 60))
+
+	// delta-wing: tip at the hotspot, swept trailing edge
+	s := u.sM
+	if u.mDown {
+		s = max(1, s*3/4)
+	}
+	x1, y1 := mx, my+11*s // straight edge down
+	x2, y2 := mx+8*s, my+8*s
+	f.FillTri(mx+1, my+1, x1+1, y1+1, x2+1, y2+1, colShadow)
+	f.FillTri(mx, my, x1, y1, x2, y2, colPanel)
+	// edge light: accent on the leading edges ember spark at the tip
+	drawLineAdd(f, mx, my, x1, y1, colAccent)
+	drawLineAdd(f, mx, my, x2, y2, colAccent)
+	drawLineAdd(f, x1, y1, x2, y2, dim(colAccent, 140))
+	pulse := uint32(150 + 100*math.Sin(now*5))
+	f.Add(mx, my, dim(colEmber, pulse))
+	f.Add(mx+1, my, dim(colEmber, pulse/2))
+	f.Add(mx, my+1, dim(colEmber, pulse/2))
 }
 
 func (u *UI) renderClock(f *Frame, now float64) {
@@ -490,10 +639,12 @@ func (u *UI) renderPanel(f *Frame, now float64) {
 	// login field
 	fieldW := pw - 12*u.sM
 	focusUser := u.phase == phaseUser
+	u.hitUser = rect{cx, cy, fieldW, luField * u.sM}
 	u.renderField(f, cx, cy, fieldW, txtLabelLogin, string(u.username), focusUser, false, now)
 	cy += luField * u.sM
 
 	// prompt field live while pam wants something ghosted otherwise
+	u.hitPrompt = rect{cx, cy, fieldW, luField * u.sM}
 	if u.phase == phasePrompt || (u.phase == phaseBusy && u.prompt != nil) {
 		label := strings.ToUpper(strings.TrimRight(strings.TrimSpace(u.prompt.GetMessage()), ":"))
 		if label == "" {
@@ -508,6 +659,7 @@ func (u *UI) renderPanel(f *Frame, now float64) {
 
 	// session selector
 	cy += luSessGap * u.sM
+	u.hitSess = rect{cx, cy - u.sM, fieldW, (luSess + 2) * u.sM}
 	name := strings.ToUpper(u.session().GetName())
 	sess := txtLabelSession
 	f.DrawText(cx, cy, sess, u.sS, colDim)
