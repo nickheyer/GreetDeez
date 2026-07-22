@@ -13,9 +13,10 @@ import (
 // theme talks to it exactly like an external front end would.
 type NativeTheme struct {
 	Name string
-	// Run draws the greeter until login succeeds or shutdown. In dev
+	// Run draws the greeter until login succeeds or shutdown. output is
+	// the configured connector name to render on, empty for auto. In dev
 	// mode auth is unavailable and the theme should offer a quit key.
-	Run func(socketPath string, timeout time.Duration, dev bool) error
+	Run func(socketPath string, timeout time.Duration, dev bool, output string) error
 }
 
 // the manifest of built-in native themes, next to the embedded webview

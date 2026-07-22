@@ -81,7 +81,7 @@ func main() {
 		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
 		binds.Undecorate(w.Window())
 	} else {
-		display.Setup(w)
+		display.Setup(w, cfg.Display.Output)
 		display.Harden(w)
 	}
 
@@ -123,7 +123,7 @@ func runNative(t uipkg.NativeTheme, cfg config.Config, client *greetd.Client, de
 	}
 	defer sock.Close()
 
-	return t.Run(sock.Path(), cfg.Auth.Timeout(), dev)
+	return t.Run(sock.Path(), cfg.Auth.Timeout(), dev, cfg.Display.Output)
 }
 
 func rpcSocketPath() string {

@@ -30,6 +30,25 @@ func TestDRMStructSizes(t *testing.T) {
 	}
 }
 
+func TestConnectorName(t *testing.T) {
+	// names must match the kernel's so users can copy them from wlr-randr etc
+	cases := []struct {
+		typ, id uint32
+		want    string
+	}{
+		{10, 1, "DP-1"},
+		{11, 2, "HDMI-A-2"},
+		{14, 1, "eDP-1"},
+		{15, 1, "Virtual-1"},
+		{99, 1, "Unknown99-1"},
+	}
+	for _, c := range cases {
+		if got := connectorName(c.typ, c.id); got != c.want {
+			t.Errorf("connectorName(%d, %d) = %q, want %q", c.typ, c.id, got, c.want)
+		}
+	}
+}
+
 func TestIoctlNumbers(t *testing.T) {
 	// spot check against drm.h constants
 	if got := drmIOWR(0xA0, 64); got != 0xC040_64A0 {

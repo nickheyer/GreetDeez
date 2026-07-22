@@ -20,10 +20,17 @@ const (
 type Config struct {
 	Debug    bool           `toml:"debug"`
 	Window   WindowConfig   `toml:"window"`
+	Display  DisplayConfig  `toml:"display"`
 	Auth     AuthConfig     `toml:"auth"`
 	Power    PowerConfig    `toml:"power"`
 	Sessions SessionsConfig `toml:"sessions"`
 	UI       UIConfig       `toml:"ui"`
+}
+
+type DisplayConfig struct {
+	// Output is the connector to show the greeter on ("DP-1", "HDMI-A-1",
+	// "eDP-1", ...). Empty means auto: most pixels, DPI breaking ties.
+	Output string `toml:"output"`
 }
 
 type UIConfig struct {
@@ -137,6 +144,9 @@ func applyEnvOverrides(cfg *Config) {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			cfg.Window.Scale = f
 		}
+	}
+	if v := os.Getenv("GREETDEEZ_DISPLAY_OUTPUT"); v != "" {
+		cfg.Display.Output = v
 	}
 	if v := os.Getenv("GREETDEEZ_AUTH_TIMEOUT_SECONDS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {

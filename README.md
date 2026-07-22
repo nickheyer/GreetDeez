@@ -142,6 +142,12 @@ title = "GreetDeez"
 # Wayland output scale, applied via wlr-output-management before the UI starts.
 scale = 1.5
 
+[display]
+# Which monitor the greeter appears on, by connector name ("DP-1", "HDMI-A-1",
+# "eDP-1", ...). Applies to every theme. Unset means auto: the display with
+# the most pixels wins, higher DPI breaking ties.
+# output = "DP-1"
+
 [auth]
 timeout_seconds = 30
 
@@ -164,7 +170,7 @@ theme = "minimal"
 # path = "/path/to/your/custom/ui"
 ```
 
-Environment variables (`GREETDEEZ_*`) override file values. For example: `GREETDEEZ_UI_THEME`, `GREETDEEZ_UI_PATH`, `GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_SCALE`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, `GREETDEEZ_POWER_ENABLED`, `GREETDEEZ_DEBUG`.
+Environment variables (`GREETDEEZ_*`) override file values. For example: `GREETDEEZ_UI_THEME`, `GREETDEEZ_UI_PATH`, `GREETDEEZ_WINDOW_TITLE`, `GREETDEEZ_SCALE`, `GREETDEEZ_DISPLAY_OUTPUT`, `GREETDEEZ_AUTH_TIMEOUT_SECONDS`, `GREETDEEZ_POWER_ENABLED`, `GREETDEEZ_DEBUG`.
 
 ## The Metal Theme
 

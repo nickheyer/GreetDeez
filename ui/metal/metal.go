@@ -11,8 +11,9 @@ import (
 
 // Run drives the bare metal greeter until login succeeds or we are
 // told to die. It must be called with the rpc socket already serving.
-// In dev mode esc at the login screen quits.
-func Run(socketPath string, timeout time.Duration, dev bool) error {
+// output is the configured connector name, empty for auto. In dev mode
+// esc at the login screen quits.
+func Run(socketPath string, timeout time.Duration, dev bool, output string) error {
 	if os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("DISPLAY") != "" {
 		return fmt.Errorf("metal theme drives DRM directly and cannot run under a compositor; " +
 			`use command = "/usr/bin/greetdeez" (no cage) in /etc/greetd/config.toml`)
@@ -24,7 +25,7 @@ func Run(socketPath string, timeout time.Duration, dev bool) error {
 	}
 
 	// drm before vt so a headless failure leaves the console alone
-	surf, err := OpenDRM()
+	surf, err := OpenDRM(output)
 	if err != nil {
 		return fmt.Errorf("drm: %w", err)
 	}

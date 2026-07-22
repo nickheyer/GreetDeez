@@ -3,26 +3,40 @@ package display
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/nickheyer/greetdeez/pkg/binds"
+	"github.com/nickheyer/greetdeez/pkg/outputs"
 	"github.com/nickheyer/greetdeez/pkg/webview"
 )
 
-// Setup queries GDK for active monitors and fullscreens the webview on the best one.
-func Setup(w webview.WebView) {
+// Setup queries GDK for active monitors and fullscreens the webview on the
+// one selected by the shared output policy. want is the configured connector
+// name, empty for auto.
+func Setup(w webview.WebView, want string) {
 	monitors := binds.EnumerateMonitors()
 
-	for _, m := range monitors {
+	outs := make([]outputs.Output, len(monitors))
+	for i, m := range monitors {
+		outs[i] = outputs.Output{
+			Name: m.Connector, Width: m.Width, Height: m.Height,
+			WidthMM: m.WidthMM, HeightMM: m.HeightMM,
+		}
 		slog.Info("GDK: monitor", "idx", m.Index, "connector", m.Connector,
 			"resolution", fmt.Sprintf("%dx%d", m.Width, m.Height),
 			"physical_mm", fmt.Sprintf("%dx%d", m.WidthMM, m.HeightMM))
 	}
 
-	target := selectBestMonitor(monitors)
-	if target == nil {
+	idx := outputs.Pick(outs, want)
+	if idx < 0 {
 		slog.Warn("GDK: no monitors found, falling back to default fullscreen")
 		binds.Fullscreen(w.Window())
 		return
+	}
+	target := monitors[idx]
+	if want != "" && !strings.EqualFold(target.Connector, want) {
+		slog.Warn("GDK: configured output not connected, using auto",
+			"want", want, "using", target.Connector)
 	}
 
 	slog.Info("GDK: targeting monitor", "connector", target.Connector,
@@ -34,18 +48,4 @@ func Setup(w webview.WebView) {
 func Harden(w webview.WebView) {
 	binds.HardenWebView(w.Widget())
 	w.DisableContextMenu()
-}
-
-func selectBestMonitor(monitors []binds.MonitorInfo) *binds.MonitorInfo {
-	if len(monitors) == 0 {
-		return nil
-	}
-
-	best := &monitors[0]
-	for i := 1; i < len(monitors); i++ {
-		if monitors[i].Width*monitors[i].Height > best.Width*best.Height {
-			best = &monitors[i]
-		}
-	}
-	return best
 }

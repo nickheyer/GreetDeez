@@ -3,8 +3,11 @@ package metal
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/nickheyer/greetdeez/pkg/outputs"
 )
 
 // pure-go drm/km
@@ -135,8 +138,88 @@ type DRMSurface struct {
 	savedCrtc drmModeCrtc
 }
 
-// OpenDRM finds the first card with a connected connector and takes it over.
-func OpenDRM() (*DRMSurface, error) {
+// connector type names from drm_connector_enum_list in the kernel
+var connectorTypeNames = [...]string{
+	"Unknown", "VGA", "DVI-I", "DVI-D", "DVI-A", "Composite", "SVIDEO",
+	"LVDS", "Component", "DIN", "DP", "HDMI-A", "HDMI-B", "TV", "eDP",
+	"Virtual", "DSI", "DPI", "Writeback", "SPI", "USB",
+}
+
+func connectorName(typ, id uint32) string {
+	if int(typ) < len(connectorTypeNames) {
+		return fmt.Sprintf("%s-%d", connectorTypeNames[typ], id)
+	}
+	return fmt.Sprintf("Unknown%d-%d", typ, id)
+}
+
+// one connected connector that could host the greeter
+type drmCandidate struct {
+	fd       int
+	card     string
+	connID   uint32
+	name     string
+	conn     drmGetConnector
+	mode     drmModeInfo
+	encoders []uint32
+	crtcs    []uint32
+}
+
+// OpenDRM enumerates connected connectors on every card and takes over the
+// one selected by the shared output policy. want is the configured connector
+// name ("DP-1", "HDMI-A-1", ...), empty for auto.
+func OpenDRM(want string) (*DRMSurface, error) {
+	cands, fds, err := enumerateOutputs()
+	if err != nil {
+		return nil, err
+	}
+
+	outs := make([]outputs.Output, len(cands))
+	for i, c := range cands {
+		outs[i] = outputs.Output{
+			Name: c.name, Width: int(c.mode.HDisplay), Height: int(c.mode.VDisplay),
+			WidthMM: int(c.conn.MmWidth), HeightMM: int(c.conn.MmHeight),
+		}
+		slog.Info("drm: output", "card", c.card, "connector", c.name,
+			"mode", fmt.Sprintf("%dx%d@%d", c.mode.HDisplay, c.mode.VDisplay, c.mode.VRefresh),
+			"physical_mm", fmt.Sprintf("%dx%d", c.conn.MmWidth, c.conn.MmHeight))
+	}
+	if want != "" && !strings.EqualFold(cands[outputs.Pick(outs, want)].name, want) {
+		slog.Warn("drm: configured output not connected, using auto", "want", want)
+	}
+
+	var lastErr error
+	for len(cands) > 0 {
+		idx := outputs.Pick(outs, want)
+		c := cands[idx]
+		s, err := setupOutput(c)
+		if err == nil {
+			for _, fd := range fds {
+				if fd != c.fd {
+					syscall.Close(fd)
+				}
+			}
+			slog.Info("drm: output ready", "card", c.card, "connector", c.name,
+				"mode", fmt.Sprintf("%dx%d@%d", s.mode.HDisplay, s.mode.VDisplay, s.mode.VRefresh))
+			return s, nil
+		}
+		lastErr = fmt.Errorf("%s %s: %w", c.card, c.name, err)
+		slog.Warn("drm: output unusable, trying next", "connector", c.name, "error", err)
+		cands = append(cands[:idx], cands[idx+1:]...)
+		outs = append(outs[:idx], outs[idx+1:]...)
+		want = ""
+	}
+	for _, fd := range fds {
+		syscall.Close(fd)
+	}
+	return nil, lastErr
+}
+
+// enumerateOutputs opens every card and lists connected connectors with
+// modes. Returned fds are the open card fds backing the candidates; the
+// caller owns them.
+func enumerateOutputs() ([]drmCandidate, []int, error) {
+	var cands []drmCandidate
+	var fds []int
 	var lastErr error
 	for i := 0; i < 8; i++ {
 		path := fmt.Sprintf("/dev/dri/card%d", i)
@@ -147,61 +230,68 @@ func OpenDRM() (*DRMSurface, error) {
 			}
 			continue
 		}
-		s, err := setupCard(fd)
+		// best effort another master means setcrtc will fail below anyway
+		if err := ioctl(fd, ioctlSetMaster, nil); err != nil {
+			slog.Debug("drm: set_master", "error", err)
+		}
+		_, crtcs, connectors, err := getResources(fd)
 		if err != nil {
+			lastErr = fmt.Errorf("%s: get resources: %w", path, err)
 			syscall.Close(fd)
-			lastErr = fmt.Errorf("%s: %w", path, err)
 			continue
 		}
-		slog.Info("drm: card ready", "path", path,
-			"mode", fmt.Sprintf("%dx%d@%d", s.mode.HDisplay, s.mode.VDisplay, s.mode.VRefresh))
-		return s, nil
+		found := false
+		for _, connID := range connectors {
+			conn, modes, encoders, err := getConnector(fd, connID)
+			if err != nil || conn.Connection != drmConnected || len(modes) == 0 {
+				continue
+			}
+			cands = append(cands, drmCandidate{
+				fd: fd, card: path, connID: connID,
+				name:     connectorName(conn.ConnectorType, conn.ConnectorTypeID),
+				conn:     conn,
+				mode:     pickMode(modes),
+				encoders: encoders,
+				crtcs:    crtcs,
+			})
+			found = true
+		}
+		if !found {
+			if lastErr == nil {
+				lastErr = fmt.Errorf("%s: no connected connector with modes", path)
+			}
+			syscall.Close(fd)
+			continue
+		}
+		fds = append(fds, fd)
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("no /dev/dri/card* devices (is the greeter user in the video group?)")
+	if len(cands) == 0 {
+		if lastErr == nil {
+			lastErr = fmt.Errorf("no /dev/dri/card* devices (is the greeter user in the video group?)")
+		}
+		return nil, nil, lastErr
 	}
-	return nil, lastErr
+	return cands, fds, nil
 }
 
-func setupCard(fd int) (*DRMSurface, error) {
-	// best effort another master means setcrtc will fail below anyway
-	if err := ioctl(fd, ioctlSetMaster, nil); err != nil {
-		slog.Debug("drm: set_master", "error", err)
-	}
-
-	res, crtcs, connectors, err := getResources(fd)
+func setupOutput(c drmCandidate) (*DRMSurface, error) {
+	crtc, err := pickCrtc(c.fd, c.conn, c.encoders, c.crtcs)
 	if err != nil {
-		return nil, fmt.Errorf("get resources: %w", err)
-	}
-	if res.CountConnectors == 0 {
-		return nil, fmt.Errorf("no connectors")
+		return nil, err
 	}
 
-	for _, connID := range connectors {
-		conn, modes, encoders, err := getConnector(fd, connID)
-		if err != nil || conn.Connection != drmConnected || len(modes) == 0 {
-			continue
-		}
-		mode := pickMode(modes)
-		crtc, err := pickCrtc(fd, conn, encoders, crtcs)
-		if err != nil {
-			continue
-		}
+	s := &DRMSurface{fd: c.fd, connector: c.connID, crtc: crtc, mode: c.mode}
 
-		s := &DRMSurface{fd: fd, connector: connID, crtc: crtc, mode: mode}
-
-		// remember what was on the crtc mostly useful on error paths
-		s.savedCrtc.CrtcID = crtc
-		if err := ioctl(fd, ioctlGetCrtc, unsafe.Pointer(&s.savedCrtc)); err != nil {
-			slog.Debug("drm: get_crtc", "error", err)
-		}
-
-		if err := s.createBuffers(); err != nil {
-			return nil, err
-		}
-		return s, nil
+	// remember what was on the crtc mostly useful on error paths
+	s.savedCrtc.CrtcID = crtc
+	if err := ioctl(c.fd, ioctlGetCrtc, unsafe.Pointer(&s.savedCrtc)); err != nil {
+		slog.Debug("drm: get_crtc", "error", err)
 	}
-	return nil, fmt.Errorf("no connected connector with modes")
+
+	if err := s.createBuffers(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func getResources(fd int) (drmCardRes, []uint32, []uint32, error) {
