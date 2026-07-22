@@ -109,6 +109,12 @@ func Fullscreen(gtkWindow unsafe.Pointer) {
 	C.gtk_window_fullscreen(win)
 }
 
+// Undecorate strips the CSD title bar without fullscreening
+func Undecorate(gtkWindow unsafe.Pointer) {
+	win := (*C.GtkWindow)(gtkWindow)
+	C.gtk_window_set_decorated(win, C.FALSE)
+}
+
 // ConfigureOutputScale sets the wlr output scale on all enabled heads.
 // Pass the exact scale you want (e.g. 1.25). If scale <= 0, this is a no-op.
 // Call BEFORE webview.New().

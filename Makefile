@@ -1,10 +1,28 @@
-.PHONY: build gen ui dev install uninstall clean package test dev-vm dev-vm-* dev-vm-down
+.PHONY: build gen buf-image tools ui dev install uninstall clean package test dev-vm dev-vm-* dev-vm-down record-vm-*
 
 # Code gen
-gen:
-	go install ./cmd/protoc-gen-greetdeez-go
-	go install ./cmd/protoc-gen-greetdeez-es
-	buf generate
+BUF_IMAGE := greetdeez-buf
+BUF_RUN := docker run --rm \
+	--volume "$(shell pwd):/workspace" \
+	--workdir /workspace \
+	--user "$(shell id -u):$(shell id -g)" \
+	--env HOME=/tmp \
+	$(BUF_IMAGE)
+
+buf-image:
+	docker build -t $(BUF_IMAGE) -f docker/Dockerfile.buf .
+
+gen: buf-image
+	$(BUF_RUN) sh -c 'go install ./cmd/protoc-gen-greetdeez-go ./cmd/protoc-gen-greetdeez-es && buf generate'
+
+
+# Dev tooling
+tools:
+	go install github.com/bufbuild/buf/cmd/buf@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install github.com/goreleaser/goreleaser/v2@latest
+	@npm install -g @bufbuild/protoc-gen-es \
+		|| echo "protoc-gen-es not installed (npm -g failed); only needed for gen-local, gen uses Docker"
 
 # Build
 build: gen ui
@@ -55,21 +73,35 @@ clean:
 	rm -rf dist/
 
 # Dev VMs
+VAGRANT := ./scripts/vagrant.sh
+
 dev-vm: dev-vm-arch
 
 dev-vm-down:
-	vagrant destroy -f
+	$(VAGRANT) destroy -f
 
 dev-vm-%:
-	@if ! vagrant snapshot list $* 2>/dev/null | grep -q 'base'; then \
-		vagrant up $* --provision-with base && \
-		vagrant snapshot save $* base && \
-		vagrant halt $*; \
+	@if ! $(VAGRANT) snapshot list $* 2>/dev/null | grep -q 'base'; then \
+		$(VAGRANT) up $* --provision-with base && \
+		$(VAGRANT) snapshot save $* base && \
+		$(VAGRANT) halt $*; \
 	fi
-	trap 'vagrant halt $*' EXIT; \
-	vagrant snapshot restore $* base && \
-	vagrant provision $* --provision-with package && \
+	trap '$(VAGRANT) halt $*' EXIT; \
+	$(VAGRANT) snapshot restore $* base && \
+	$(VAGRANT) provision $* --provision-with package && \
 	virt-viewer -c qemu:///system --wait --attach GreetDeez_$*
+
+# Record a greeter demo from a VM into demo/demo.mp4 + demo/demo.webp
+record-vm-%:
+	@if ! $(VAGRANT) snapshot list $* 2>/dev/null | grep -q 'base'; then \
+		$(VAGRANT) up $* --provision-with base && \
+		$(VAGRANT) snapshot save $* base && \
+		$(VAGRANT) halt $*; \
+	fi
+	trap '$(VAGRANT) halt $*' EXIT; \
+	$(VAGRANT) snapshot restore $* base && \
+	$(VAGRANT) provision $* --provision-with package && \
+	WAIT_SECONDS=25 ./scripts/record-demo.sh GreetDeez_$* demo
 
 # Package (via goreleaser)
 package: build

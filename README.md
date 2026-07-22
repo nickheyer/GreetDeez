@@ -30,6 +30,13 @@ The `GREETDEEZ_UI_THEME` environment variable can also be used to override the t
 
 ## Installation
 
+> **If you already have a display manager running** (sddm, gdm, lightdm, or `plasmalogin` on KDE Plasma 6), the package install will not disable it for you. After installing, disable the existing one and enable greetd:
+>
+> ```sh
+> sudo systemctl disable --now plasmalogin.service   # or sddm / gdm / lightdm
+> sudo systemctl enable greetd.service
+> ```
+
 ### Arch Linux (AUR)
 
 ```sh
@@ -85,7 +92,7 @@ services.greetdeez.settings = {
 
 ### From source
 
-Requires: Go 1.26+, Node.js 20+, `libwebkit2gtk-4.1-dev`, `pkg-config`
+Requires: Go 1.26+, Node.js 20+, Docker, `libwebkit2gtk-4.1-dev`, `pkg-config`
 
 Runtime dependencies: `greetd`, `cage`, `webkit2gtk-4.1`
 

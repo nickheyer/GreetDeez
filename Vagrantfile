@@ -1,10 +1,17 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
+BRIDGE_DEV = ENV.fetch("GREETDEEZ_VM_BRIDGE", "br0")
+USE_BRIDGE = system("ip link show #{BRIDGE_DEV} > /dev/null 2>&1")
 
 Vagrant.configure("2") do |config|
   config.ssh.pty = true
 
-  config.vm.network :public_network, dev: "br0", mode: "bridge", type: "bridge"
+  # Provisioning is inline
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  if USE_BRIDGE
+    config.vm.network :public_network, dev: BRIDGE_DEV, mode: "bridge", type: "bridge"
+  end
 
   config.vm.provider :libvirt do |lv|
     lv.memory = 4096
@@ -13,7 +20,7 @@ Vagrant.configure("2") do |config|
     lv.video_type = "qxl"
     lv.video_vram = 262144
     lv.channel :type => 'spicevmc', :target_name => 'com.redhat.spice.0', :target_type => 'virtio'
-    lv.management_network_mode = "none"
+    lv.management_network_mode = "none" if USE_BRIDGE
   end
 
   create_test_user = <<~SHELL
@@ -28,7 +35,13 @@ Vagrant.configure("2") do |config|
     arch.vm.hostname = "greetdeez-arch"
 
     arch.vm.provision "base", type: "shell", inline: <<~SHELL
+      set -e
       echo 'nameserver 1.1.1.1' > /etc/resolv.conf
+      # The box ships a stale mirrorlist full of dead mirrors; pin good ones.
+      printf '%s\\n' \
+        'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' \
+        'Server = https://mirror.rackspace.com/archlinux/$repo/os/$arch' \
+        > /etc/pacman.d/mirrorlist
       pacman -Sy --noconfirm archlinux-keyring
       pacman -Syu --noconfirm
       pacman -S --noconfirm --needed sway gnome-shell gnome-session xorg-server plasma-desktop konsole foot base-devel git spice-vdagent
@@ -36,6 +49,7 @@ Vagrant.configure("2") do |config|
 
       #{create_test_user}
       su - test -c '
+        rm -rf /tmp/yay
         git clone https://aur.archlinux.org/yay.git /tmp/yay
         cd /tmp/yay
         makepkg -si --noconfirm

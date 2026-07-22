@@ -67,6 +67,7 @@ func main() {
 	if *devMode {
 		w.SetTitle("GreetDeez [dev]")
 		w.SetSize(cfg.Window.Width, cfg.Window.Height, webview.HintNone)
+		binds.Undecorate(w.Window())
 	} else {
 		display.Setup(w)
 		display.Harden(w)

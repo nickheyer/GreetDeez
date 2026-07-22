@@ -1,0 +1,13 @@
+# Proto codegen
+FROM golang:1.26-alpine
+
+COPY --from=bufbuild/buf:latest /usr/local/bin/buf /usr/local/bin/buf
+RUN apk add --no-cache nodejs npm \
+    && npm install -g @bufbuild/protoc-gen-es@2
+ENV GOFLAGS=-buildvcs=false \
+    GOCACHE=/tmp/gocache
+COPY go.mod go.sum /warm/
+RUN cd /warm \
+    && go mod download \
+    && go install google.golang.org/protobuf/cmd/protoc-gen-go \
+    && chmod -R a+rwX /go /tmp/gocache
