@@ -86,6 +86,9 @@ type UI struct {
 	Done    bool
 	Success bool
 
+	// dev mode: esc at the login screen quits, nothing to log into
+	Dev bool
+
 	// wall clock injected for deterministic snapshots
 	Clock func() time.Time
 
@@ -168,6 +171,10 @@ func (u *UI) HandleKey(ev KeyEvent, now float64) {
 		case keyEnter, keyKpEnter:
 			if len(u.username) > 0 {
 				u.beginAuth(now)
+			}
+		case keyEsc:
+			if u.Dev {
+				u.Done = true
 			}
 		case keyBackspace:
 			if u.mods.Ctrl() {

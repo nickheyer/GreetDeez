@@ -1,4 +1,4 @@
-.PHONY: build gen buf-image proto-lint proto-format proto-breaking tools ui dev install uninstall clean package test dev-vm dev-vm-* dev-vm-down vm-base-*
+.PHONY: build gen buf-image proto-lint proto-format proto-breaking tools ui dev dev-metal install uninstall clean package test dev-vm dev-vm-* dev-vm-down vm-base-*
 
 # Code gen
 BUF_IMAGE := greetdeez-buf
@@ -45,6 +45,14 @@ ui:
 # Dev
 dev: build
 	cage -s -- ./bin/greetdeez -dev
+
+# metal drives DRM itself so this must run from a real TTY, not a desktop terminal
+dev-metal: build
+	@if [ -n "$$WAYLAND_DISPLAY" ] || [ -n "$$DISPLAY" ]; then \
+		echo "dev-metal needs the display to itself: switch to a TTY (ctrl+alt+F3) and run it there"; \
+		exit 1; \
+	fi
+	GREETDEEZ_UI_THEME=metal ./bin/greetdeez -dev
 
 # Install
 DESTDIR ?=

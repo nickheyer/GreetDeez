@@ -13,17 +13,15 @@ import (
 // theme talks to it exactly like an external front end would.
 type NativeTheme struct {
 	Name string
-	// Run draws the greeter until login succeeds or shutdown.
-	Run func(socketPath string, timeout time.Duration) error
-	// Snapshot renders representative frames as PNGs into dir with
-	// stub data — no hardware needed. Optional.
-	Snapshot func(dir string, w, h int) error
+	// Run draws the greeter until login succeeds or shutdown. In dev
+	// mode auth is unavailable and the theme should offer a quit key.
+	Run func(socketPath string, timeout time.Duration, dev bool) error
 }
 
 // the manifest of built-in native themes, next to the embedded webview
 // themes in embed.go — the backend never references these packages
 var natives = map[string]NativeTheme{
-	"metal": {Name: "metal", Run: metal.Run, Snapshot: metal.Snapshot},
+	"metal": {Name: "metal", Run: metal.Run},
 }
 
 // Native returns the built-in native theme with the given name.

@@ -1,6 +1,47 @@
 package metal
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	pb "github.com/nickheyer/greetdeez/gen/go/greetdeez/v1"
+)
+
+// canned backend so render benchmarks need no socket
+type stubBackend struct{}
+
+func (stubBackend) SystemInfo(context.Context) (*pb.SystemInfo, error) {
+	return &pb.SystemInfo{Hostname: "deezbox"}, nil
+}
+
+func (stubBackend) Sessions(context.Context) ([]*pb.Session, error) {
+	return []*pb.Session{
+		{Name: "sway", Cmd: []string{"sway"}, Type: pb.SessionType_SESSION_TYPE_WAYLAND},
+		{Name: "i3", Cmd: []string{"i3"}, Type: pb.SessionType_SESSION_TYPE_X11},
+	}, nil
+}
+
+func (stubBackend) PowerCaps(context.Context) (*pb.PowerCapabilities, error) {
+	return &pb.PowerCapabilities{CanPoweroff: true, CanReboot: true, CanSuspend: true}, nil
+}
+
+func (stubBackend) State(context.Context) (*pb.GreeterState, error) {
+	return &pb.GreeterState{LastUser: "nick", LastSession: "sway"}, nil
+}
+
+func (stubBackend) SaveState(context.Context, string, string) error { return nil }
+
+func (stubBackend) BeginAuth(context.Context, string) (*pb.AuthStep, error) {
+	return &pb.AuthStep{Prompt: &pb.AuthPrompt{Type: pb.PromptType_PROMPT_TYPE_SECRET, Message: "Password:"}}, nil
+}
+
+func (stubBackend) RespondAuth(context.Context, string) (*pb.AuthStep, error) {
+	return &pb.AuthStep{Success: true}, nil
+}
+
+func (stubBackend) CancelAuth(context.Context) error                { return nil }
+func (stubBackend) StartSession(context.Context, *pb.Session) error { return nil }
+func (stubBackend) Power(context.Context, pb.PowerAction) error     { return nil }
 
 func TestPlasmaRenderFillsFrame(t *testing.T) {
 	f := NewFrame(64, 48)
