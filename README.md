@@ -6,7 +6,7 @@ Hackable display manager for [greetd](https://git.sr.ht/~kennylevinsen/greetd), 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![AUR](https://img.shields.io/aur/version/greetdeez-bin)](https://aur.archlinux.org/packages/greetdeez-bin)
 
-![minimal](minimal.webp)
+![metal](metal.gif)
 
 > **This is the `metal` theme.** It embeds it's own compositor and runs in the frame buffer while speaking pure greetdeez protocol. It's the default theme currently.
 
