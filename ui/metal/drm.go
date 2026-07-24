@@ -133,9 +133,17 @@ type DRMSurface struct {
 	mode      drmModeInfo
 	fbs       [2]dumbFB
 	back      int
-	flipped   bool // first present uses setcrtc
-	noFlip    bool // driver refused page flip fall back to setcrtc
-	savedCrtc drmModeCrtc
+	flipped   bool        // first present uses setcrtc
+	noFlip    bool        // driver refused page flip fall back to setcrtc
+	saved     []crtcState // every active crtc as found, put back on Close
+	otherFds  []int       // extra cards held open so blanked outputs stay dark
+}
+
+// pre-greeter state of one crtc and the connectors it was driving
+type crtcState struct {
+	fd    int
+	crtc  drmModeCrtc
+	conns []uint32
 }
 
 // connector type names from drm_connector_enum_list in the kernel
@@ -172,6 +180,9 @@ func OpenDRM(want string) (*DRMSurface, error) {
 	if err != nil {
 		return nil, err
 	}
+	// the retry loop below compacts cands in place keep a copy so restore
+	// still knows about every connector we saw
+	all := append([]drmCandidate(nil), cands...)
 
 	outs := make([]outputs.Output, len(cands))
 	for i, c := range cands {
@@ -193,11 +204,7 @@ func OpenDRM(want string) (*DRMSurface, error) {
 		c := cands[idx]
 		s, err := setupOutput(c)
 		if err == nil {
-			for _, fd := range fds {
-				if fd != c.fd {
-					syscall.Close(fd)
-				}
-			}
+			s.captureAndBlank(all, fds)
 			slog.Info("drm: output ready", "card", c.card, "connector", c.name,
 				"mode", fmt.Sprintf("%dx%d@%d", s.mode.HDisplay, s.mode.VDisplay, s.mode.VRefresh))
 			return s, nil
@@ -282,16 +289,62 @@ func setupOutput(c drmCandidate) (*DRMSurface, error) {
 
 	s := &DRMSurface{fd: c.fd, connector: c.connID, crtc: crtc, mode: c.mode}
 
-	// remember what was on the crtc mostly useful on error paths
-	s.savedCrtc.CrtcID = crtc
-	if err := ioctl(c.fd, ioctlGetCrtc, unsafe.Pointer(&s.savedCrtc)); err != nil {
-		slog.Debug("drm: get_crtc", "error", err)
-	}
-
 	if err := s.createBuffers(); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// currentCrtcOf reports the crtc a connector is routed to right now, 0 if dark.
+func currentCrtcOf(fd int, conn drmGetConnector) uint32 {
+	if conn.EncoderID == 0 {
+		return 0
+	}
+	enc := drmGetEncoder{EncoderID: conn.EncoderID}
+	if err := ioctl(fd, ioctlGetEncoder, unsafe.Pointer(&enc)); err != nil {
+		return 0
+	}
+	return enc.CrtcID
+}
+
+// Cap active crtc so Close can hand the console back as it found it
+func (s *DRMSurface) captureAndBlank(all []drmCandidate, fds []int) {
+	crtcsByFd := make(map[int][]uint32)
+	routes := make(map[int]map[uint32][]uint32)
+	for _, c := range all {
+		crtcsByFd[c.fd] = c.crtcs
+		if id := currentCrtcOf(c.fd, c.conn); id != 0 {
+			if routes[c.fd] == nil {
+				routes[c.fd] = make(map[uint32][]uint32)
+			}
+			routes[c.fd][id] = append(routes[c.fd][id], c.connID)
+		}
+	}
+	for fd, crtcs := range crtcsByFd {
+		for _, id := range crtcs {
+			st := crtcState{fd: fd, conns: routes[fd][id]}
+			st.crtc.CrtcID = id
+			if err := ioctl(fd, ioctlGetCrtc, unsafe.Pointer(&st.crtc)); err != nil {
+				continue
+			}
+			if st.crtc.ModeValid == 0 && st.crtc.FbID == 0 {
+				continue // already dark nothing to restore
+			}
+			s.saved = append(s.saved, st)
+			if fd == s.fd && id == s.crtc {
+				continue // ours the first present takes it over
+			}
+			off := drmModeCrtc{CrtcID: id}
+			if err := ioctl(fd, ioctlSetCrtc, unsafe.Pointer(&off)); err != nil {
+				slog.Debug("drm: blank crtc", "crtc", id, "error", err)
+			}
+		}
+	}
+	for _, fd := range fds {
+		if fd != s.fd {
+			s.otherFds = append(s.otherFds, fd)
+		}
+	}
 }
 
 func getResources(fd int) (drmCardRes, []uint32, []uint32, error) {
@@ -505,6 +558,18 @@ func copyFrameToFB(f *Frame, fb *dumbFB, w, h int) {
 }
 
 func (s *DRMSurface) Close() {
+	// hand every crtc back before dropping our fbs
+	for _, st := range s.saved {
+		set := drmModeCrtc{CrtcID: st.crtc.CrtcID}
+		if st.crtc.ModeValid != 0 && st.crtc.FbID != 0 && len(st.conns) > 0 {
+			set = st.crtc
+			set.SetConnectorsPtr = uint64(uintptr(unsafe.Pointer(&st.conns[0])))
+			set.CountConnectors = uint32(len(st.conns))
+		}
+		if err := ioctl(st.fd, ioctlSetCrtc, unsafe.Pointer(&set)); err != nil {
+			slog.Debug("drm: restore crtc", "crtc", st.crtc.CrtcID, "error", err)
+		}
+	}
 	for i := range s.fbs {
 		fb := &s.fbs[i]
 		if fb.mem != nil {
@@ -518,6 +583,10 @@ func (s *DRMSurface) Close() {
 			d := drmDestroyDumb{Handle: fb.handle}
 			ioctl(s.fd, ioctlDestroyDumb, unsafe.Pointer(&d))
 		}
+	}
+	for _, fd := range s.otherFds {
+		ioctl(fd, ioctlDropMaster, nil)
+		syscall.Close(fd)
 	}
 	ioctl(s.fd, ioctlDropMaster, nil)
 	syscall.Close(s.fd)

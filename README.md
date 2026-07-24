@@ -153,6 +153,8 @@ scale = 1.5
 # "eDP-1", ...). Applies to every theme. Unset means auto: the display with
 # the most pixels wins, higher DPI breaking ties.
 # output = "DP-1"
+# The metal theme blanks every other output while the greeter is up and
+# hands the console state back untouched when the session starts.
 
 [auth]
 timeout_seconds = 30

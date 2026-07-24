@@ -25,6 +25,9 @@ type scriptedGreeter struct {
 	beginCalls  int
 	startedWith string
 	savedUser   string
+
+	sessions []*pb.Session    // nil means the sway/i3 defaults
+	state    *pb.GreeterState // nil means the prefill/i3 defaults
 }
 
 func (s *scriptedGreeter) GetSystemInfo(context.Context, *pb.GetSystemInfoRequest) (*pb.GetSystemInfoResponse, error) {
@@ -32,6 +35,9 @@ func (s *scriptedGreeter) GetSystemInfo(context.Context, *pb.GetSystemInfoReques
 }
 
 func (s *scriptedGreeter) ListSessions(context.Context, *pb.ListSessionsRequest) (*pb.ListSessionsResponse, error) {
+	if s.sessions != nil {
+		return &pb.ListSessionsResponse{Sessions: s.sessions}, nil
+	}
 	return &pb.ListSessionsResponse{Sessions: []*pb.Session{
 		{Name: "sway", Cmd: []string{"sway"}, Type: pb.SessionType_SESSION_TYPE_WAYLAND},
 		{Name: "i3", Cmd: []string{"i3"}, Type: pb.SessionType_SESSION_TYPE_X11},
@@ -43,6 +49,9 @@ func (s *scriptedGreeter) GetPowerCapabilities(context.Context, *pb.GetPowerCapa
 }
 
 func (s *scriptedGreeter) GetState(context.Context, *pb.GetStateRequest) (*pb.GetStateResponse, error) {
+	if s.state != nil {
+		return &pb.GetStateResponse{State: s.state}, nil
+	}
 	return &pb.GetStateResponse{State: &pb.GreeterState{LastUser: "prefill", LastSession: "i3"}}, nil
 }
 
@@ -152,6 +161,32 @@ func TestUILoadsBackendData(t *testing.T) {
 	}
 	if !u.caps.GetCanPoweroff() {
 		t.Error("power caps not loaded")
+	}
+}
+
+func TestLastSessionTypeBreaksNameTie(t *testing.T) {
+	plasma := []*pb.Session{
+		{Name: "Plasma", Cmd: []string{"startplasma-wayland"}, Type: pb.SessionType_SESSION_TYPE_WAYLAND},
+		{Name: "Plasma", Cmd: []string{"startplasma-x11"}, Type: pb.SessionType_SESSION_TYPE_X11},
+	}
+	cases := []struct {
+		name  string
+		saved pb.SessionType
+		want  pb.SessionType
+	}{
+		{"wayland stays wayland", pb.SessionType_SESSION_TYPE_WAYLAND, pb.SessionType_SESSION_TYPE_WAYLAND},
+		{"x11 stays x11", pb.SessionType_SESSION_TYPE_X11, pb.SessionType_SESSION_TYPE_X11},
+		{"typeless legacy state takes first match", pb.SessionType_SESSION_TYPE_UNSPECIFIED, pb.SessionType_SESSION_TYPE_WAYLAND},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			u := newTestUI(t, &scriptedGreeter{sessions: plasma, state: &pb.GreeterState{
+				LastUser: "nick", LastSession: "Plasma", LastSessionType: c.saved,
+			}})
+			if got := u.session().GetType(); got != c.want {
+				t.Errorf("preselected type = %v, want %v", got, c.want)
+			}
+		})
 	}
 }
 

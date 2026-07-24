@@ -11,8 +11,9 @@ const appName = "greetdeez"
 
 // remembered across logins
 type State struct {
-	LastUser    string `json:"last_user,omitempty"`
-	LastSession string `json:"last_session,omitempty"`
+	LastUser        string `json:"last_user,omitempty"`
+	LastSession     string `json:"last_session,omitempty"`
+	LastSessionType string `json:"last_session_type,omitempty"`
 }
 
 // Load reads state file missing or corrupt gives empty

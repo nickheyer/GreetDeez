@@ -14,7 +14,7 @@ type Backend interface {
 	Sessions(ctx context.Context) ([]*pb.Session, error)
 	PowerCaps(ctx context.Context) (*pb.PowerCapabilities, error)
 	State(ctx context.Context) (*pb.GreeterState, error)
-	SaveState(ctx context.Context, user, session string) error
+	SaveState(ctx context.Context, user string, sess *pb.Session) error
 	BeginAuth(ctx context.Context, username string) (*pb.AuthStep, error)
 	RespondAuth(ctx context.Context, response string) (*pb.AuthStep, error)
 	CancelAuth(ctx context.Context) error
@@ -68,10 +68,12 @@ func (b *socketBackend) State(ctx context.Context) (*pb.GreeterState, error) {
 	return resp.State, nil
 }
 
-func (b *socketBackend) SaveState(ctx context.Context, user, session string) error {
+func (b *socketBackend) SaveState(ctx context.Context, user string, sess *pb.Session) error {
 	var resp pb.SaveStateResponse
 	return b.c.Call(ctx, svc+"SaveState",
-		&pb.SaveStateRequest{State: &pb.GreeterState{LastUser: user, LastSession: session}}, &resp)
+		&pb.SaveStateRequest{State: &pb.GreeterState{
+			LastUser: user, LastSession: sess.GetName(), LastSessionType: sess.GetType(),
+		}}, &resp)
 }
 
 func (b *socketBackend) BeginAuth(ctx context.Context, username string) (*pb.AuthStep, error) {

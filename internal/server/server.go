@@ -184,8 +184,9 @@ func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResp
 		slog.Debug("dev: login", "username", req.Username)
 		if req.Session != nil {
 			state.Save(state.State{
-				LastUser:    req.Username,
-				LastSession: req.Session.Name,
+				LastUser:        req.Username,
+				LastSession:     req.Session.Name,
+				LastSessionType: sessionTypeString(req.Session.GetType()),
 			})
 		}
 		return &pb.LoginResponse{Success: true}, nil
@@ -208,8 +209,9 @@ func (s *Server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResp
 	// state saved here before greetd reaps us
 	if req.Session != nil {
 		state.Save(state.State{
-			LastUser:    req.Username,
-			LastSession: req.Session.Name,
+			LastUser:        req.Username,
+			LastSession:     req.Session.Name,
+			LastSessionType: sessionTypeString(req.Session.GetType()),
 		})
 	}
 
@@ -306,22 +308,35 @@ func (s *Server) GetState(_ context.Context, _ *pb.GetStateRequest) (*pb.GetStat
 	st := state.Load()
 	return &pb.GetStateResponse{
 		State: &pb.GreeterState{
-			LastUser:    st.LastUser,
-			LastSession: st.LastSession,
+			LastUser:        st.LastUser,
+			LastSession:     st.LastSession,
+			LastSessionType: mapSessionType(st.LastSessionType),
 		},
 	}, nil
 }
 
 func (s *Server) SaveState(_ context.Context, req *pb.SaveStateRequest) (*pb.SaveStateResponse, error) {
 	st := state.State{
-		LastUser:    req.State.GetLastUser(),
-		LastSession: req.State.GetLastSession(),
+		LastUser:        req.State.GetLastUser(),
+		LastSession:     req.State.GetLastSession(),
+		LastSessionType: sessionTypeString(req.State.GetLastSessionType()),
 	}
 	if err := state.Save(st); err != nil {
 		slog.Warn("failed to save state", "error", err)
 		return &pb.SaveStateResponse{Ok: false, Error: err.Error()}, nil
 	}
 	return &pb.SaveStateResponse{Ok: true}, nil
+}
+
+func sessionTypeString(t pb.SessionType) string {
+	switch t {
+	case pb.SessionType_SESSION_TYPE_WAYLAND:
+		return "wayland"
+	case pb.SessionType_SESSION_TYPE_X11:
+		return "x11"
+	default:
+		return ""
+	}
 }
 
 func mapSessionType(t string) pb.SessionType {

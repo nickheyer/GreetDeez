@@ -149,10 +149,21 @@ func (u *UI) loadBackendData() {
 	}
 	if st, err := u.be.State(ctx); err == nil && st != nil {
 		u.username = []rune(st.GetLastUser())
+		match := -1
 		for i, s := range u.sessions {
-			if s.GetName() == st.GetLastSession() {
-				u.sessIdx = i
+			if s.GetName() != st.GetLastSession() {
+				continue
 			}
+			if s.GetType() == st.GetLastSessionType() {
+				match = i
+				break
+			}
+			if match < 0 {
+				match = i
+			}
+		}
+		if match >= 0 {
+			u.sessIdx = match
 		}
 	}
 }
@@ -413,7 +424,7 @@ func (u *UI) startSession(now float64) {
 			return
 		}
 		// best effort greeter is about to die anyway
-		u.be.SaveState(ctx, user, sess.GetName()) //nolint:errcheck
+		u.be.SaveState(ctx, user, sess) //nolint:errcheck
 		u.resCh <- startResult{}
 	}()
 	_ = now

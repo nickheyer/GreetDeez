@@ -29,7 +29,7 @@ func (stubBackend) State(context.Context) (*pb.GreeterState, error) {
 	return &pb.GreeterState{LastUser: "nick", LastSession: "sway"}, nil
 }
 
-func (stubBackend) SaveState(context.Context, string, string) error { return nil }
+func (stubBackend) SaveState(context.Context, string, *pb.Session) error { return nil }
 
 func (stubBackend) BeginAuth(context.Context, string) (*pb.AuthStep, error) {
 	return &pb.AuthStep{Prompt: &pb.AuthPrompt{Type: pb.PromptType_PROMPT_TYPE_SECRET, Message: "Password:"}}, nil

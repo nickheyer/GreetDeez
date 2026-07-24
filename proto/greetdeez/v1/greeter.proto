@@ -7,30 +7,30 @@ option go_package = "github.com/nickheyer/greetdeez/gen/go/greetdeez/v1;greetdee
 
 enum SessionType {
   SESSION_TYPE_UNSPECIFIED = 0;
-  SESSION_TYPE_WAYLAND     = 1;
-  SESSION_TYPE_X11         = 2;
+  SESSION_TYPE_WAYLAND = 1;
+  SESSION_TYPE_X11 = 2;
 }
 
 message Session {
-  string          name    = 1;
-  repeated string cmd     = 2;
-  SessionType     type    = 3;
-  string          desktop = 4;
+  string name = 1;
+  repeated string cmd = 2;
+  SessionType type = 3;
+  string desktop = 4;
 }
 
 // ── Power ───────────────────────────────────────────────────────
 
 enum PowerAction {
   POWER_ACTION_UNSPECIFIED = 0;
-  POWER_ACTION_POWEROFF    = 1;
-  POWER_ACTION_REBOOT      = 2;
-  POWER_ACTION_SUSPEND     = 3;
+  POWER_ACTION_POWEROFF = 1;
+  POWER_ACTION_REBOOT = 2;
+  POWER_ACTION_SUSPEND = 3;
 }
 
 message PowerCapabilities {
   bool can_poweroff = 1;
-  bool can_reboot   = 2;
-  bool can_suspend  = 3;
+  bool can_reboot = 2;
+  bool can_suspend = 3;
 }
 
 // ── System ──────────────────────────────────────────────────────
@@ -42,21 +42,22 @@ message SystemInfo {
 // ── State ───────────────────────────────────────────────────────
 
 message GreeterState {
-  string last_user    = 1;
+  string last_user = 1;
   string last_session = 2;
+  SessionType last_session_type = 3; // sessions can share a display name across types
 }
 
 // ── RPC messages ────────────────────────────────────────────────
 
 // One-shot: authenticate + start session
 message LoginRequest {
-  string  username = 1;
-  string  password = 2;
-  Session session  = 3;
+  string username = 1;
+  string password = 2;
+  Session session = 3;
 }
 message LoginResponse {
-  bool            success  = 1;
-  string          error    = 2;
+  bool success = 1;
+  string error = 2;
   repeated string messages = 3;
 }
 
@@ -66,8 +67,8 @@ message AuthenticateRequest {
   string password = 2;
 }
 message AuthenticateResponse {
-  bool            success  = 1;
-  string          error    = 2;
+  bool success = 1;
+  string error = 2;
   repeated string messages = 3;
 }
 
@@ -75,74 +76,98 @@ message AuthenticateResponse {
 
 enum PromptType {
   PROMPT_TYPE_UNSPECIFIED = 0;
-  PROMPT_TYPE_VISIBLE     = 1;
-  PROMPT_TYPE_SECRET      = 2;
+  PROMPT_TYPE_VISIBLE = 1;
+  PROMPT_TYPE_SECRET = 2;
 }
 
 // pam wants input from user
 message AuthPrompt {
-  PromptType type    = 1;
-  string     message = 2;
+  PromptType type = 1;
+  string message = 2;
 }
 
 // one step of conversation ends in prompt or terminal state
 message AuthStep {
-  bool            success  = 1;
-  AuthPrompt      prompt   = 2;
+  bool success = 1;
+  AuthPrompt prompt = 2;
   repeated string messages = 3;
-  string          error    = 4;
+  string error = 4;
 }
 
-message BeginAuthRequest   { string username = 1; }
-message RespondAuthRequest { string response = 1; }
-message CancelAuthRequest  {}
-message CancelAuthResponse { bool ok = 1; }
+message BeginAuthRequest {
+  string username = 1;
+}
+message RespondAuthRequest {
+  string response = 1;
+}
+message CancelAuthRequest {}
+message CancelAuthResponse {
+  bool ok = 1;
+}
 
 // Staged step 2: start session (after successful Authenticate)
 message StartSessionRequest {
   Session session = 1;
 }
 message StartSessionResponse {
-  bool   success = 1;
-  string error   = 2;
+  bool success = 1;
+  string error = 2;
 }
 
-message ListSessionsRequest  {}
-message ListSessionsResponse { repeated Session sessions = 1; }
+message ListSessionsRequest {}
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+}
 
-message GetSystemInfoRequest  {}
-message GetSystemInfoResponse { SystemInfo info = 1; }
+message GetSystemInfoRequest {}
+message GetSystemInfoResponse {
+  SystemInfo info = 1;
+}
 
-message GetPowerCapabilitiesRequest  {}
-message GetPowerCapabilitiesResponse { PowerCapabilities capabilities = 1; }
+message GetPowerCapabilitiesRequest {}
+message GetPowerCapabilitiesResponse {
+  PowerCapabilities capabilities = 1;
+}
 
-message ExecutePowerActionRequest  { PowerAction action = 1; }
-message ExecutePowerActionResponse { bool ok = 1; string error = 2; }
+message ExecutePowerActionRequest {
+  PowerAction action = 1;
+}
+message ExecutePowerActionResponse {
+  bool ok = 1;
+  string error = 2;
+}
 
-message GetStateRequest  {}
-message GetStateResponse { GreeterState state = 1; }
+message GetStateRequest {}
+message GetStateResponse {
+  GreeterState state = 1;
+}
 
-message SaveStateRequest  { GreeterState state = 1; }
-message SaveStateResponse { bool ok = 1; string error = 2; }
+message SaveStateRequest {
+  GreeterState state = 1;
+}
+message SaveStateResponse {
+  bool ok = 1;
+  string error = 2;
+}
 
 // ── Service ─────────────────────────────────────────────────────
 
 service GreeterService {
-  rpc Login(LoginRequest)                 returns (LoginResponse);
-  rpc Authenticate(AuthenticateRequest)   returns (AuthenticateResponse);
-  rpc StartSession(StartSessionRequest)   returns (StartSessionResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+  rpc StartSession(StartSessionRequest) returns (StartSessionResponse);
 
-  rpc BeginAuth(BeginAuthRequest)         returns (AuthStep);
-  rpc RespondAuth(RespondAuthRequest)     returns (AuthStep);
-  rpc CancelAuth(CancelAuthRequest)       returns (CancelAuthResponse);
+  rpc BeginAuth(BeginAuthRequest) returns (AuthStep);
+  rpc RespondAuth(RespondAuthRequest) returns (AuthStep);
+  rpc CancelAuth(CancelAuthRequest) returns (CancelAuthResponse);
 
-  rpc ListSessions(ListSessionsRequest)   returns (ListSessionsResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
 
   rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
 
   rpc GetPowerCapabilities(GetPowerCapabilitiesRequest) returns (GetPowerCapabilitiesResponse);
-  rpc ExecutePowerAction(ExecutePowerActionRequest)     returns (ExecutePowerActionResponse);
+  rpc ExecutePowerAction(ExecutePowerActionRequest) returns (ExecutePowerActionResponse);
 
-  rpc GetState(GetStateRequest)           returns (GetStateResponse);
-  rpc SaveState(SaveStateRequest)         returns (SaveStateResponse);
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+  rpc SaveState(SaveStateRequest) returns (SaveStateResponse);
 }
