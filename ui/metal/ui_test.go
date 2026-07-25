@@ -204,18 +204,26 @@ func TestUIFullLoginFlow(t *testing.T) {
 		t.Fatalf("username = %q", string(u.username))
 	}
 
+	// tab to the password field and fill it, nothing may hit the
+	// backend until enter
+	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
+	typeString(t, u, "hunter2", now)
+	g.mu.Lock()
+	calls := g.beginCalls
+	g.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("typing fired %d BeginAuth calls, want 0", calls)
+	}
+
+	// enter submits the whole form as one conversation
 	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
-	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
+	waitFor(t, u, &now, func() bool { return u.phase == phaseWarp })
 	if g.begun != "nick" {
 		t.Errorf("BeginAuth saw %q", g.begun)
 	}
 	if len(u.msgs) == 0 || u.msgs[0] != "Welcome back" {
 		t.Errorf("info messages = %v", u.msgs)
 	}
-
-	typeString(t, u, "hunter2", now)
-	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
-	waitFor(t, u, &now, func() bool { return u.phase == phaseWarp })
 
 	// warp finishes then the greeter reports done
 	waitFor(t, u, &now, func() bool { return u.Done })
@@ -230,14 +238,27 @@ func TestUIFullLoginFlow(t *testing.T) {
 	}
 }
 
-func TestUIWrongPassword(t *testing.T) {
-	g := &scriptedGreeter{password: "right"}
+// an empty password field falls back to the interactive pam prompt so
+// stacks that want something other than a password still work
+func TestUIEmptyPasswordGoesInteractive(t *testing.T) {
+	g := &scriptedGreeter{password: "hunter2"}
 	u := newTestUI(t, g)
 	now := 1.0
 
 	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
 	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
 
+	typeString(t, u, "hunter2", now)
+	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
+	waitFor(t, u, &now, func() bool { return u.phase == phaseWarp })
+}
+
+func TestUIWrongPassword(t *testing.T) {
+	g := &scriptedGreeter{password: "right"}
+	u := newTestUI(t, g)
+	now := 1.0
+
+	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
 	typeString(t, u, "wrong", now)
 	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
 	waitFor(t, u, &now, func() bool { return u.phase == phaseUser && u.errMsg != "" })
@@ -247,6 +268,9 @@ func TestUIWrongPassword(t *testing.T) {
 	}
 	if len(u.input) != 0 {
 		t.Error("input should clear on failure")
+	}
+	if !u.focusPw {
+		t.Error("failure should focus the password field for the retry")
 	}
 	if u.Done {
 		t.Error("must not exit on failure")
@@ -287,37 +311,40 @@ func TestUISessionCycleAndEscape(t *testing.T) {
 	}
 }
 
-func TestUITabMovesBetweenFields(t *testing.T) {
+// tab and clicks are pure focus moves: the backend must see zero
+// traffic no matter how much the user wanders around the form. This is
+// what keeps pam_faillock counters untouched until a real submit.
+func TestUITabTogglesFocusWithoutBackendCalls(t *testing.T) {
 	g := &scriptedGreeter{password: "x"}
 	u := newTestUI(t, g)
 	now := 1.0
 
-	// tab with a username advances into the pam prompt (the next field)
-	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
-	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
-	if g.begun != "prefill" {
-		t.Errorf("tab should begin auth for %q, got %q", "prefill", g.begun)
+	for i := 0; i < 7; i++ {
+		u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
 	}
-
-	// tab from the prompt wraps back to the login field
-	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
 	if u.phase != phaseUser {
-		t.Errorf("tab in prompt should return to user phase, got %d", u.phase)
+		t.Fatalf("tab must stay local, got phase %d", u.phase)
 	}
-	if string(u.username) != "prefill" {
-		t.Errorf("username must survive the round trip, got %q", string(u.username))
+	if !u.focusPw {
+		t.Error("odd tab count should land on the password field")
 	}
 
-	// tab with an empty username has no next field to go to
-	u.HandleKey(KeyEvent{Code: keyLeftCtrl, Down: true}, now)
-	u.HandleKey(KeyEvent{Code: keyBackspace, Down: true}, now)
-	u.HandleKey(KeyEvent{Code: keyLeftCtrl, Down: false}, now)
+	// typing goes to the focused field
+	typeString(t, u, "pw", now)
+	if string(u.input) != "pw" {
+		t.Errorf("password buffer = %q, want pw", string(u.input))
+	}
+	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
+	typeString(t, u, "x", now)
+	if string(u.username) != "prefillx" {
+		t.Errorf("username = %q, want prefillx", string(u.username))
+	}
+
 	g.mu.Lock()
-	g.begun = ""
+	calls := g.beginCalls
 	g.mu.Unlock()
-	u.HandleKey(KeyEvent{Code: keyTab, Down: true}, now)
-	if u.phase != phaseUser {
-		t.Errorf("tab on empty username should stay put, got phase %d", u.phase)
+	if calls != 0 {
+		t.Errorf("focus moves fired %d BeginAuth calls, want 0", calls)
 	}
 }
 
@@ -364,18 +391,28 @@ func TestUIMouseClicksAndWheel(t *testing.T) {
 		t.Errorf("session click = %q, want i3", u.session().GetName())
 	}
 
-	// clicking the ghost password field with a username begins auth
+	// clicking the password field only moves focus, no backend traffic
 	px := u.hitPrompt.x + u.hitPrompt.w/2
 	py := u.hitPrompt.y + u.hitPrompt.h/2
 	u.HandleMouse(MouseEvent{Abs: true, X: float64(px), Y: float64(py)}, now)
 	u.HandleMouse(MouseEvent{Abs: true, X: float64(px), Y: float64(py), Btn: 1, Down: true}, now)
-	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
+	if u.phase != phaseUser || !u.focusPw {
+		t.Errorf("password click should focus locally, got phase %d focusPw %v", u.phase, u.focusPw)
+	}
 
-	// clicking the login field cancels back out of the prompt
-	u.Render(f, now)
+	// clicking the login field focuses it again
 	ux := u.hitUser.x + u.hitUser.w/2
 	uy := u.hitUser.y + u.hitUser.h/2
 	u.HandleMouse(MouseEvent{Abs: true, X: float64(ux), Y: float64(uy)}, now)
+	u.HandleMouse(MouseEvent{Abs: true, X: float64(ux), Y: float64(uy), Btn: 1, Down: true}, now)
+	if u.phase != phaseUser || u.focusPw {
+		t.Errorf("login click should focus login, got phase %d focusPw %v", u.phase, u.focusPw)
+	}
+
+	// from the interactive prompt a login field click cancels back out
+	u.HandleKey(KeyEvent{Code: keyEnter, Down: true}, now)
+	waitFor(t, u, &now, func() bool { return u.phase == phasePrompt })
+	u.Render(f, now)
 	u.HandleMouse(MouseEvent{Abs: true, X: float64(ux), Y: float64(uy), Btn: 1, Down: true}, now)
 	if u.phase != phaseUser {
 		t.Errorf("login field click should refocus login, got phase %d", u.phase)

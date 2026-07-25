@@ -197,10 +197,12 @@ For direct DRM rendering the greetdeez user needs to be in the `video` and `inpu
 
 ### Controls
 
-- **Type** to fill the focused field, **Enter** submits it - even half-filled, the backend gets to say no
-- **Tab** moves between fields, **arrow keys** (or scroll wheel) switch the session
+- **Type** to fill the focused field, **Enter** submits the whole form as one PAM conversation - leave the password empty and PAM asks interactively instead (2FA and friends also drop to the interactive prompt)
+- **Tab** and clicks only move focus between the local fields - nothing touches PAM (or your `pam_faillock` counter) until you press Enter
+- **Arrow keys** (or scroll wheel) switch the session
 - **Mouse** does what you'd expect: click a field to focus it, click the session row to cycle it - and the lava in the background follows the pointer, so stir it
 - **F10/F11/F12** power off / reboot / suspend, pressed twice to confirm
+- **Ctrl+Alt+F1..F12** switches virtual terminals - the greeter releases the GPU while you're away and takes it back when you return
 
 ### Developing it
 

@@ -509,6 +509,35 @@ func (s *DRMSurface) Present(f *Frame) error {
 	return nil
 }
 
+// Pause hands the gpu over for a vt switch away: without master the
+// next vt owner is free to modeset.
+func (s *DRMSurface) Pause() {
+	for _, fd := range s.otherFds {
+		ioctl(fd, ioctlDropMaster, nil)
+	}
+	ioctl(s.fd, ioctlDropMaster, nil)
+}
+
+// Resume retakes the gpu after a vt switch back and forces the next
+// Present through a full setcrtc.
+func (s *DRMSurface) Resume() {
+	if err := ioctl(s.fd, ioctlSetMaster, nil); err != nil {
+		slog.Warn("drm: set_master on resume", "error", err)
+	}
+	for _, fd := range s.otherFds {
+		ioctl(fd, ioctlSetMaster, nil)
+	}
+	// whoever had the vt may have lit crtcs we blanked at startup
+	for _, st := range s.saved {
+		if st.fd == s.fd && st.crtc.CrtcID == s.crtc {
+			continue
+		}
+		off := drmModeCrtc{CrtcID: st.crtc.CrtcID}
+		ioctl(st.fd, ioctlSetCrtc, unsafe.Pointer(&off))
+	}
+	s.flipped = false
+}
+
 func (s *DRMSurface) setCrtc(fbID uint32) error {
 	conn := s.connector
 	crtc := drmModeCrtc{

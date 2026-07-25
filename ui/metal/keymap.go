@@ -9,6 +9,7 @@ const (
 	keyLeftCtrl   = 29
 	keyLeftShift  = 42
 	keyRightShift = 54
+	keyLeftAlt    = 56
 	keySpace      = 57
 	keyCapsLock   = 58
 	keyF1         = 59
@@ -18,6 +19,7 @@ const (
 	keyF12        = 88
 	keyKpEnter    = 96
 	keyRightCtrl  = 97
+	keyRightAlt   = 100
 	keyUp         = 103
 	keyLeft       = 105
 	keyRight      = 106

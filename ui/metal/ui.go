@@ -71,6 +71,7 @@ type UI struct {
 	phase    phase
 	username []rune
 	input    []rune
+	focusPw  bool // phaseUser: password field focused instead of login
 	prompt   *pb.AuthPrompt
 	msgs     []string
 	busyMsg  string
@@ -181,14 +182,15 @@ func (u *UI) backToUser() {
 	go u.be.CancelAuth(context.Background()) //nolint:errcheck
 	u.input = u.input[:0]
 	u.prompt = nil
+	u.focusPw = false
 	u.phase = phaseUser
 }
 
 // ── input ───────────────────────────────────────────────────────
 
-// Keyboard model: tab moves between fields, arrows change the session,
-// enter always submits whatever is in the focused field and lets the
-// backend reject it.
+// Keyboard model: both form fields are local, tab and clicks only move
+// focus, arrows change the session. PAM is spoken to exactly once, on
+// enter, so stray tabs and clicks can never burn faillock attempts.
 func (u *UI) HandleKey(ev KeyEvent, now float64) {
 	if u.mods.Track(ev.Code, ev.Down) || !ev.Down {
 		return
@@ -204,26 +206,35 @@ func (u *UI) HandleKey(ev KeyEvent, now float64) {
 		case keyEnter, keyKpEnter:
 			u.beginAuth(now)
 		case keyTab:
-			// the next field is the pam prompt which needs a user first
-			if len(u.username) > 0 {
-				u.beginAuth(now)
-			}
+			u.focusPw = !u.focusPw
 		case keyEsc:
 			if u.Dev {
 				u.Done = true
 			}
 		case keyBackspace:
+			buf := &u.username
+			if u.focusPw {
+				buf = &u.input
+			}
 			if u.mods.Ctrl() {
-				u.username = u.username[:0]
-			} else if len(u.username) > 0 {
-				u.username = u.username[:len(u.username)-1]
+				*buf = (*buf)[:0]
+			} else if len(*buf) > 0 {
+				*buf = (*buf)[:len(*buf)-1]
 			}
 		case keyRight, keyDown:
 			u.cycleSession(1)
 		case keyLeft, keyUp:
 			u.cycleSession(-1)
 		default:
-			if r := u.mods.Rune(ev.Code); r != 0 && len(u.username) < maxUserLen {
+			r := u.mods.Rune(ev.Code)
+			if r == 0 {
+				break
+			}
+			if u.focusPw {
+				if len(u.input) < maxInputLen {
+					u.input = append(u.input, r)
+				}
+			} else if len(u.username) < maxUserLen {
 				u.username = append(u.username, r)
 			}
 		}
@@ -252,6 +263,10 @@ func (u *UI) HandleKey(ev KeyEvent, now float64) {
 		}
 	}
 }
+
+// ResetMods drops modifier state for presenters that lose key releases,
+// like a vt switch away with ctrl+alt still held.
+func (u *UI) ResetMods() { u.mods = Mods{} }
 
 // ── mouse ───────────────────────────────────────────────────────
 
@@ -307,13 +322,13 @@ func (u *UI) HandleMouse(ev MouseEvent, now float64) {
 		if ev.Down {
 			u.plasma.Pulse()
 			if ev.Btn == 1 {
-				u.click(int(u.mx), int(u.my), now)
+				u.click(int(u.mx), int(u.my))
 			}
 		}
 	}
 }
 
-func (u *UI) click(x, y int, now float64) {
+func (u *UI) click(x, y int) {
 	switch {
 	case u.hitSess.contains(x, y) && (u.phase == phaseUser || u.phase == phasePrompt):
 		if x < u.hitSess.x+u.hitSess.w/2 {
@@ -323,10 +338,10 @@ func (u *UI) click(x, y int, now float64) {
 		}
 	case u.phase == phasePrompt && u.hitUser.contains(x, y):
 		u.backToUser()
+	case u.phase == phaseUser && u.hitUser.contains(x, y):
+		u.focusPw = false
 	case u.phase == phaseUser && u.hitPrompt.contains(x, y):
-		if len(u.username) > 0 {
-			u.beginAuth(now)
-		}
+		u.focusPw = true
 	}
 }
 
@@ -383,15 +398,28 @@ func powerKeyName(a pb.PowerAction) string {
 
 // ── auth flow ───────────────────────────────────────────────────
 
+// beginAuth submits the whole form as one pam conversation. A filled
+// password answers the first secret prompt right away; anything else
+// pam wants (2fa, an empty password field) drops to the interactive
+// prompt via onAuthStep.
 func (u *UI) beginAuth(now float64) {
 	u.phase = phaseBusy
 	u.busyMsg = txtAuthenticating
 	u.errMsg = ""
 	user := string(u.username)
+	pw := string(u.input)
+	u.input = u.input[:0]
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		step, err := u.be.BeginAuth(ctx, user)
+		if err == nil && pw != "" && step.GetPrompt().GetType() == pb.PromptType_PROMPT_TYPE_SECRET {
+			next, nerr := u.be.RespondAuth(ctx, pw)
+			if nerr == nil && next != nil {
+				next.Messages = append(step.GetMessages(), next.GetMessages()...)
+			}
+			step, err = next, nerr
+		}
 		u.resCh <- authResult{step: step, err: err}
 	}()
 	_ = now
@@ -438,6 +466,8 @@ func (u *UI) fail(msg string, now float64) {
 	u.errAt = now
 	u.prompt = nil
 	u.input = u.input[:0]
+	// focus the password for the retry the username usually survives
+	u.focusPw = len(u.username) > 0
 	u.phase = phaseUser
 }
 
@@ -649,21 +679,25 @@ func (u *UI) renderPanel(f *Frame, now float64) {
 
 	// login field
 	fieldW := pw - 12*u.sM
-	focusUser := u.phase == phaseUser
+	focusUser := u.phase == phaseUser && !u.focusPw
 	u.hitUser = rect{cx, cy, fieldW, luField * u.sM}
 	u.renderField(f, cx, cy, fieldW, txtLabelLogin, string(u.username), focusUser, false, now)
 	cy += luField * u.sM
 
-	// prompt field live while pam wants something ghosted otherwise
+	// second slot: the local password field until pam asks for
+	// something else ghosted while busy
 	u.hitPrompt = rect{cx, cy, fieldW, luField * u.sM}
-	if u.phase == phasePrompt || (u.phase == phaseBusy && u.prompt != nil) {
+	switch {
+	case u.phase == phasePrompt || (u.phase == phaseBusy && u.prompt != nil):
 		label := strings.ToUpper(strings.TrimRight(strings.TrimSpace(u.prompt.GetMessage()), ":"))
 		if label == "" {
 			label = txtLabelPassword
 		}
 		secret := u.prompt.GetType() == pb.PromptType_PROMPT_TYPE_SECRET
 		u.renderField(f, cx, cy, fieldW, label, string(u.input), u.phase == phasePrompt, secret, now)
-	} else {
+	case u.phase == phaseUser:
+		u.renderField(f, cx, cy, fieldW, txtLabelPassword, string(u.input), u.focusPw, true, now)
+	default:
 		u.renderGhostField(f, cx, cy, fieldW, txtLabelPassword)
 	}
 	cy += luField * u.sM
