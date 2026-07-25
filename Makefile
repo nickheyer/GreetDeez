@@ -1,4 +1,4 @@
-.PHONY: build gen buf-image proto-lint proto-format proto-breaking tools ui dev dev-metal install uninstall clean package test dev-vm dev-vm-* dev-vm-down vm-base-*
+.PHONY: build gen buf-image proto-lint proto-format proto-breaking tools ui dev dev-metal install uninstall clean package release test dev-vm dev-vm-* dev-vm-down vm-base-*
 
 # Code gen
 BUF_IMAGE := greetdeez-buf
@@ -112,3 +112,10 @@ dev-vm-%: vm-base-%
 # Package (via goreleaser)
 package: build
 	goreleaser release --snapshot --clean
+
+# Cut a release: bump the highest v* tag by a patch, sync versioned files
+# to it, commit, and push - the tag push triggers release.yml. Other bumps
+# ride RELEASE_FLAGS: make release RELEASE_FLAGS=--minor (or --major,
+# --set 2.0.0, --dry-run).
+release:
+	bash scripts/release/pushReleaseTag.sh $(RELEASE_FLAGS)
